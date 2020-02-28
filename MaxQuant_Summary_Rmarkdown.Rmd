@@ -1,0 +1,540 @@
+---
+title: "Summary statistics of post-processed MaxQuant output submitted to Expression Atlas."
+output: pdf_document
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(finalfit)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(stringr)
+library(mygene)
+library(ggplot2)
+library(Biobase)
+library(data.table)
+
+
+dir <- "/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD004143/"
+
+tmp  <- read.table( paste(dir,"proteinGroups.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+
+# I. Pre-processed data summary
+tmp_preproc_protein_groups <- nrow(tmp)
+tmp_preproc_reverse <- nrow(tmp[ tmp[, "Reverse"] == "+", ])
+tmp_preproc_contaminants <- nrow(tmp[ tmp[, "Potential.contaminant"] == "+", ]) 
+tmp_preproc_peptides_more_than_1 <- nrow(tmp[ tmp[, "Peptides"] > 1, ])
+number_of_samples <- ncol(tmp[ ,c(grep("Peptides.", colnames(tmp))) ])
+total_preproc_proteins <- sum(tmp$Number.of.proteins)
+total_preproc_peptides <- sum(tmp$Peptides)
+total_preproc_uniquepeptides <- sum(tmp$Unique.peptides)
+preproc_gene_count_1 <- "NA"
+
+
+#Count number of SwissProt and Trembl entries including isoforms
+tmp$Sprot_counts_ALL <- "NA"
+tmp$Trembl_counts_ALL <- "NA"
+
+for(i in 1:nrow(tmp)){
+    
+    x <- strsplit(tmp[ i, "Protein.IDs"], split = ";")
+    
+    tmp[i, "Sprot_counts_ALL"] <- sum(str_count(x[[1]], "sp\\|"))
+    tmp[i, "Trembl_counts_ALL"] <- sum(str_count(x[[1]], "tr\\|"))
+}
+
+Sprot_sum_preproc_ALL <- sum(as.numeric(as.character(tmp$Sprot_counts_ALL)))
+Trembl_sum_preproc_ALL <- sum(as.numeric(as.character(tmp$Trembl_counts_ALL)))
+
+
+
+# Counting number of proteins in each sample
+# Since there is no direct protein count for each sample in MaxQuant output
+# we look at intensity coloumn for each sample and if the intensity value is 0, then the protein count is 0
+# for non zero intensity count the protein count for that sample is the same as in teh coloumn "Number.of.proteins".
+# https://mgimond.github.io/ES218/Week03a.html
+
+Proteincount_per_sample <- function(df){
+  Intensity_data_cols <- c(grep("Intensity.", colnames(df) ) )
+  Intensity <- df[,c("Protein.IDs","Number.of.proteins")]
+
+  Intensity <- cbind(Intensity, df[,Intensity_data_cols[1]:tail(Intensity_data_cols, n=1)])
+
+  Proteincount_persample <- Intensity
+  Proteincount_persample <- mutate_at(Proteincount_persample, vars(colnames(Proteincount_persample[,c(-1,-2)])), 
+                                                              list(~ ifelse( . == 0, 0, Proteincount_persample$Number.of.proteins)))
+
+  setnames(Proteincount_persample, old = c(-1,-2), new = gsub("Intensity", "Protein.count",colnames(Proteincount_persample[,c(-1,-2)]),perl=TRUE))
+
+  Proteincount_sum_persample <- data.frame(lapply(Proteincount_persample[,c(-1,-2)], function(y){sum(y)}))
+  return(Proteincount_sum_persample)
+}
+
+Proteincount_persample_preproc <- Proteincount_per_sample(tmp)
+Proteincount_cnames <- colnames(Proteincount_persample_preproc)
+Proteincount_preproc_long <- gather(Proteincount_persample_preproc, Samples, Protein_count_sum, Proteincount_cnames[1]:tail(Proteincount_cnames, n=1), factor_key=TRUE)
+proteincount_preproc_table <- Proteincount_preproc_long
+Proteincount_preproc_long$Type <- rep("Pre-processed", nrow(Proteincount_preproc_long))
+
+
+# Counting non-isoform protein count in each sample
+# Get non-isoform protein count by counting unique (non-isoform) ids from Protein.IDs and foolow as above
+
+tmp$non_isoform_protein_count <- "NA"
+tmp$Sprot_counts_Nonisoforms <- "NA"
+tmp$Trembl_counts_Nonisoforms <- "NA"
+
+for(i in 1:nrow(tmp)){
+  x <- data.frame(strsplit(tmp[ i, "Protein.IDs"], split = ";"), stringsAsFactors = FALSE)
+
+  x[,1] <- gsub("sp\\||tr\\|", "", x[,1], perl=TRUE)
+  x[,1] <- gsub("\\|.*", "", x[,1], perl=TRUE)
+  x[,1] <- gsub("-\\d+", "", x[,1], perl=TRUE) # remove isoform number
+
+  tmp[i, "non_isoform_protein_count"] <- nrow(unique(x))
+  
+  
+  #Count number of SwissProt and Trembl entries including isoforms
+  y <- strsplit(tmp[ i, "Protein.IDs"], split = ";")
+  y <- unique(gsub("-\\d+", "", y[[1]], perl=TRUE)) # remove isoform number and consider unique entries
+  
+  tmp[i, "Sprot_counts_Nonisoforms"] <- sum(str_count(y, "sp\\|"))
+  tmp[i, "Trembl_counts_Nonisoforms"] <- sum(str_count(y, "tr\\|"))
+}
+
+tmp$non_isoform_protein_count <- as.numeric(as.character(tmp$non_isoform_protein_count))
+
+Nonisoform_protein_count_per_sample <- function(df){
+  
+  noniso_df <- df[,c(grep("Intensity.", colnames(df))) ]
+  noniso_df <- cbind(non_isoform_protein_count=tmp$non_isoform_protein_count, noniso_df)
+
+  noniso_df <- mutate_at(noniso_df, vars(colnames(noniso_df[,c(-1)])), list(~ ifelse( . == 0, 0, noniso_df$non_isoform_protein_count)))
+  setnames(noniso_df, old = colnames(noniso_df), new = gsub("Intensity", "Protein.count",colnames(noniso_df),perl=TRUE))
+
+  noniso_sum_persample <- data.frame(lapply(noniso_df, function(y){sum(y)}))
+  return(noniso_sum_persample)
+}
+
+# Non-isoform protein count in all preprocessed samples
+nonisoform_proteincount_persample_preproc <- Nonisoform_protein_count_per_sample(tmp)
+nonisoform_proteincount_preproc <- nonisoform_proteincount_persample_preproc[1]
+nonisoform_colnames <- colnames(nonisoform_proteincount_persample_preproc[-1])
+nonisoform_proteincount_preproc_long <- gather(nonisoform_proteincount_persample_preproc[-1], Samples, nonisoform_count, nonisoform_colnames[1]:tail(nonisoform_colnames, n=1), factor_key = TRUE)
+nonisoform_proteincount_preproc_table <- nonisoform_proteincount_preproc_long
+nonisoform_proteincount_preproc_long$Type <- rep("Pre-processed", nrow(nonisoform_proteincount_preproc_long))
+Sprot_sum_preproc_noniso <- sum(as.numeric(as.character(tmp$Sprot_counts_Nonisoforms)))
+Trembl_sum_preproc_noniso <- sum(as.numeric(as.character(tmp$Trembl_counts_Nonisoforms)))
+
+
+# Counting number of peptides in each sample
+Peptide_count_per_sample <- function(df){
+  Peptide_data_cols <- c(grep("", colnames(df)))
+  Peptidecount_sum_persample <- data.frame(lapply(df[,Peptide_data_cols[1]:tail(Peptide_data_cols, n=1)], function(y){sum(y)}))
+  Peptidecount_cnames <- colnames(Peptidecount_sum_persample)
+  Peptidecount_long <- gather(Peptidecount_sum_persample, Samples, Peptide_count_sum, Peptidecount_cnames[1]:tail(Peptidecount_cnames, n=1), factor_key=TRUE)
+  return(Peptidecount_long)
+}
+
+peptides_preproc_tmp <- tmp[, c(grep("Peptides.", colnames(tmp)))]
+Peptidecount_preproc_long <- Peptide_count_per_sample(peptides_preproc_tmp)
+peptidecount_preproc_table <- Peptidecount_preproc_long
+Peptidecount_preproc_long$Type <- rep("Pre-processed", nrow(Peptidecount_preproc_long))
+Peptidecount_preproc_long$group <- rep("All peptides", nrow(Peptidecount_preproc_long))
+
+# Unique peptide count per sample
+unique_peptides_preproc_tmp <- tmp[, c(grep("Unique.peptides.", colnames(tmp)))]
+unique_peptidecount_preproc_long <- Peptide_count_per_sample(unique_peptides_preproc_tmp)
+unique_peptidecount_preproc_table <- unique_peptidecount_preproc_long
+unique_peptidecount_preproc_long$Type <- rep("Pre-processed", nrow(unique_peptidecount_preproc_long))
+unique_peptidecount_preproc_long$group <- rep("Unique peptides", nrow(unique_peptidecount_preproc_long))
+
+
+###### Post-processing ######
+# Apply filter 1
+tmp <- tmp[ tmp[, "Reverse"] != "+", ]
+tmp <- tmp[ tmp[, "Potential.contaminant"] != "+", ]
+
+tmp$"ENSG" <- "NA"
+tmp$"Gene.Name" <- "NA"
+tmp$"Gene.Symbol" <- "NA"
+tmp$"unique.gene.count" <- "NA"
+
+# Map UniProt Accessionto ENSEMBL Gene ID/Symbol
+for(i in 1:nrow(tmp)){
+    
+    x <- data.frame(strsplit(tmp[ i, "Majority.protein.IDs"], split = ";"), stringsAsFactors = FALSE)
+    
+    x[,1] <- gsub("sp\\||tr\\|", "", x[,1], perl=TRUE)
+    x[,1] <- gsub("\\|.*", "", x[,1], perl=TRUE)
+    x[,1] <- gsub("-\\d+", "", x[,1], perl=TRUE) # remove isoform number
+    
+    f = file()
+    sink(file=f)
+    a <- tryCatch(queryMany(x, scopes="uniprot", fields=c("ensembl.gene", "symbol", "name"), species="human"), error = function(e) {print(0)})
+    sink()
+    close(f)
+                 # DFrame not DataFrame 
+    if (class(a)=="DFrame"){
+    tmp[ i, "ENSG"] <- paste( unique(unlist(a$ensembl.gene[!is.na(a$ensembl.gene)])), collapse = ";")
+    tmp[ i, "Gene.Name"] <- paste( unique(unlist(a$name[!is.na(a$name)])), collapse = ";")
+    tmp[ i, "Gene.Symbol"] <- paste( unique(unlist(a$symbol[!is.na(a$symbol)])), collapse = ";")
+    temp_name <- tmp[i,"Gene.Name"]
+    tmp[ i , "unique.gene.count"] <- str_count(unique(temp_name), ";")+1
+  }
+}
+
+# remove protein groups that have no mapping to an ENSG gene IDs
+tmp <- tmp[tmp$ENSG != "" ,]
+tmp <- tmp[tmp$ENSG != "NA" ,]
+# remove all protein groups that map to multiple ENSG gene IDs (this removes a lot of proteins) - the reasoning to remove these cases is that we cannot establish for sure which gene is contributing the signal to the protein abundance; all genes contribute equally or one gene is a majority? 
+#tmp <- tmp[ grep(";", tmp$ENSG, invert = TRUE) , ]
+# this filter is applied below as unique.gene.count == 1
+
+
+# Get counts
+tmp_postproc_peptides_more_than_1 <- nrow(tmp[ tmp[, "Peptides"] > 1, ])
+postproc_gene_count_1 <- nrow(tmp[tmp$unique.gene.count == 1, ])
+
+# II. Post-processing
+# Apply Filter 2
+tmp <- tmp[ tmp[, "Peptides"] > 1, ]
+tmp <- tmp[tmp$unique.gene.count == 1, ]
+tmp_postproc_reverse <- nrow(tmp[ tmp[, "Reverse"] == "+", ])
+tmp_postproc_contaminants <- nrow(tmp[ tmp[, "Potential.contaminant"] == "+", ]) 
+tmp_postproc_peptides_more_than_1 <- nrow(tmp[ tmp[, "Peptides"] > 1, ])
+total_postproc_proteins <- sum(tmp$Number.of.proteins)
+total_postproc_peptides <- sum(tmp$Peptides)
+total_postroc_uniquepeptides <- sum(tmp$Unique.peptides)
+total_filtered_protein_groups <- nrow(tmp)
+Sprot_sum_postproc_ALL <- sum(as.numeric(as.character(tmp$Sprot_counts_ALL)))
+Trembl_sum_postproc_ALL <- sum(as.numeric(as.character(tmp$Trembl_counts_ALL)))
+Sprot_sum_postproc_noniso <- sum(as.numeric(as.character(tmp$Sprot_counts_Nonisoforms)))
+Trembl_sum_postproc_noniso <- sum(as.numeric(as.character(tmp$Trembl_counts_Nonisoforms)))
+
+
+# FOT normalisation
+# define FOT normalisation function
+# FOT stands for Fraction Of Total. In this normalisation method each protein iBAQ intensity value is scaled to the total amount of signal in a given MS run (column) and transformed to parts per billion (ppb)
+
+fot.normalise <- function(x){
+  data.sum <-   apply(x, 2, function(y){sum(y, na.rm=TRUE)})
+  ##### do ppm normalisation
+  x.mat <- as.matrix(x)
+  x.mat.ppb <- apply(x.mat, 2, function(i) i/sum(i, na.rm = T) * 1000000000 )
+  x.mat.ppb <- as.data.frame(x.mat.ppb)
+  colnames(x.mat.ppb) <- paste("ppb.", colnames(x.mat.ppb), sep = "")
+  return(x.mat.ppb)
+}
+
+EXP_TYPE <- "MS1-quant"
+
+if(EXP_TYPE == "MS1-quant"){
+  tmp_iBAQs_pre_normalised <- tmp[ ,c(2, grep("iBAQ.", colnames(tmp))) ]
+  
+  Majority.protein.IDs <- tmp$Majority.protein.IDs
+  tmp_nonids <- tmp_iBAQs_pre_normalised[,-1]
+  tmp_iBAQs_ppb_normalised <- fot.normalise(tmp_nonids)
+  tmp_iBAQs_ppb_normalised <- data.frame( cbind(Majority.protein.IDs, tmp_iBAQs_ppb_normalised, stringsAsFactors = FALSE) )
+}
+
+# iBAQs
+cnames_iBAQs_pre <- colnames(tmp_iBAQs_pre_normalised)
+cnames_iBAQs_ppb <- colnames(tmp_iBAQs_ppb_normalised)
+
+tmp_iBAQs_pre_normalised_long <- gather(tmp_iBAQs_pre_normalised, Samples, iBAQ, cnames_iBAQs_pre[2]:tail(cnames_iBAQs_pre, n=1), factor_key=TRUE)
+tmp_iBAQs_pre_normalised_long$Type <- rep("iBAQ before normalisation", nrow(tmp_iBAQs_pre_normalised_long))
+
+tmp_iBAQs_ppb_normalised_long <- gather(tmp_iBAQs_ppb_normalised, Samples, iBAQ, cnames_iBAQs_ppb[2]:tail(cnames_iBAQs_ppb, n=1), factor_key=TRUE)
+tmp_iBAQs_ppb_normalised_long$Type <- rep("iBAQ.ppb after normalisation", nrow(tmp_iBAQs_ppb_normalised_long))
+
+tmp_iBAQs_plot <- rbind(tmp_iBAQs_pre_normalised_long, tmp_iBAQs_ppb_normalised_long)
+tmp_iBAQs_plot$Samples <- gsub("iBAQ.|ppb.iBAQ.", "", tmp_iBAQs_plot$Samples, perl=TRUE)
+
+
+# Counting number of proteins in each sample
+Proteincount_persample_postproc <- Proteincount_per_sample(tmp)
+Proteincount_cnames <- colnames(Proteincount_persample_postproc)
+Proteincount_postproc_long <- gather(Proteincount_persample_postproc, Samples, Protein_count_sum, Proteincount_cnames[1]:tail(Proteincount_cnames, n=1), factor_key=TRUE)
+proteincount_postproc_table <- Proteincount_postproc_long
+Proteincount_postproc_long$Type <- rep("Post-processed", nrow(Proteincount_postproc_long))
+
+
+Proteincount_sample_plot <- rbind(Proteincount_preproc_long, Proteincount_postproc_long)
+Proteincount_sample_plot$Samples <- gsub("Protein.count.", "", Proteincount_sample_plot$Samples, perl=TRUE)
+save(Proteincount_sample_plot, file = paste(dir,"Protein_count.rda", sep=""))
+
+# Protein count table in output file
+colnames(proteincount_preproc_table) <- c("Samples","Pre. ALL§")
+colnames(proteincount_postproc_table) <- c("Samples","Post. ALL¶")
+
+proteincount_table <- merge(x=proteincount_preproc_table, y=proteincount_postproc_table,
+                            by.x=c("Samples"), by.y=c("Samples"))
+save(proteincount_table, file = paste(dir,"Protein_count_table.rda", sep=""))
+
+
+
+
+# Non-isoform protein count in all post-processed samples
+nonisoform_proteincount_persample_postproc <- Nonisoform_protein_count_per_sample(tmp)
+nonisoform_proteincount_postproc <- nonisoform_proteincount_persample_postproc[1]
+nonisoform_colnames <- colnames(nonisoform_proteincount_persample_postproc[-1])
+nonisoform_proteincount_postproc_long <- gather(nonisoform_proteincount_persample_postproc[-1], Samples, nonisoform_count, nonisoform_colnames[1]:tail(nonisoform_colnames, n=1), factor_key = TRUE)
+nonisoform_proteincount_postproc_table <- nonisoform_proteincount_postproc_long
+nonisoform_proteincount_postproc_long$Type <- rep("Post-processed", nrow(nonisoform_proteincount_postproc_long))
+
+Nonisoform_count_sample_plot <- rbind(nonisoform_proteincount_preproc_long, nonisoform_proteincount_postproc_long)
+Nonisoform_count_sample_plot$Samples <- gsub("Protein.count.", "", Nonisoform_count_sample_plot$Samples, perl=TRUE)
+save(Nonisoform_count_sample_plot, file = paste(dir,"Nonisoform_count.rda", sep=""))
+
+# Non-isoform protein count table in output file
+colnames(nonisoform_proteincount_preproc_table) <- c("Samples", "Pre. non-iso.†")
+colnames(nonisoform_proteincount_postproc_table) <- c("Samples", "Post. non-iso.€")
+nonisoformcount_table <- merge(x=nonisoform_proteincount_preproc_table, y=nonisoform_proteincount_postproc_table,
+                               by.x=c("Samples"), by.y=c("Samples"))
+save(nonisoformcount_table, file = paste(dir,"Nonisoform_count_table.rda", sep=""))
+
+
+
+
+# Combined barplot of protein counts with and without isoforms
+
+colnames(Proteincount_preproc_long) <- c("Samples","Protein_count", "Type")
+Proteincount_preproc_long$group <- rep("With isoforms", nrow(Proteincount_preproc_long))
+
+colnames(Proteincount_postproc_long) <- c("Samples","Protein_count", "Type")
+Proteincount_postproc_long$group <- rep("With isoforms", nrow(Proteincount_postproc_long))
+
+colnames(nonisoform_proteincount_preproc_long) <- c("Samples","Protein_count", "Type")
+nonisoform_proteincount_preproc_long$group <- rep("Without isoforms", nrow(nonisoform_proteincount_preproc_long))
+
+colnames(nonisoform_proteincount_postproc_long) <- c("Samples","Protein_count", "Type")
+nonisoform_proteincount_postproc_long$group <- rep("Without isoforms", nrow(nonisoform_proteincount_postproc_long))
+
+
+combined_protein_count_plot <- rbind(Proteincount_preproc_long, Proteincount_postproc_long, nonisoform_proteincount_preproc_long, nonisoform_proteincount_postproc_long)
+save(combined_protein_count_plot, file = paste(dir,"Combined_proteincount_plot.rda", sep=""))
+##############
+
+
+Proteintable_FULL <- merge(x=proteincount_table, y=nonisoformcount_table,
+                           by.x=c("Samples"), by.y=c("Samples"))
+
+Proteintable_FULL$Samples <- gsub("Protein.count.", "", Proteintable_FULL$Samples, perl=TRUE)
+
+save(Proteintable_FULL, file = paste(dir,"Proteintable_FULL.rda", sep=""))
+
+
+# Peptide counts per sample
+peptides_postproc_tmp <- tmp[, c(grep("Peptides.", colnames(tmp)))]
+Peptidecount_postproc_long <- Peptide_count_per_sample(peptides_postproc_tmp)
+peptidecount_postproc_table <- Peptidecount_postproc_long
+Peptidecount_postproc_long$Type <- rep("Post-processed", nrow(Peptidecount_postproc_long))
+Peptidecount_postproc_long$group <- rep("All peptides", nrow(Peptidecount_postproc_long))
+
+
+#for density plot
+cnames_peptides <- colnames(peptides_postproc_tmp)
+tmp_peptides_long <- gather(peptides_postproc_tmp, Samples, Peptides, cnames_peptides[1]:tail(cnames_peptides, n=1), factor_key=TRUE)
+
+
+# Unique peptide count per sample
+unique_peptides_postproc_tmp <- tmp[, c(grep("Unique.peptides.", colnames(tmp)))]
+unique_peptidecount_postproc_long <- Peptide_count_per_sample(unique_peptides_postproc_tmp)
+unique_peptidecount_postproc_table <- unique_peptidecount_postproc_long
+unique_peptidecount_postproc_long$Type <- rep("Post-processed", nrow(unique_peptidecount_postproc_long))
+unique_peptidecount_postproc_long$group <- rep("Unique peptides", nrow(unique_peptidecount_postproc_long))
+
+
+Peptidecount_sample_plot <- rbind(Peptidecount_preproc_long, Peptidecount_postproc_long, unique_peptidecount_preproc_long, unique_peptidecount_postproc_long)
+Peptidecount_sample_plot$Samples <- gsub("Peptides.|Unique.peptides.", "", Peptidecount_sample_plot$Samples, perl=TRUE)
+save(Peptidecount_sample_plot, file = paste(dir,"Peptide_count.rda", sep=""))
+
+
+# Peptide count table in output file
+colnames(peptidecount_preproc_table) <- c("Samples","Pre. ALL.§")
+colnames(peptidecount_postproc_table) <- c("Samples","Post. ALL.¶")
+colnames(unique_peptidecount_preproc_table) <- c("Samples","Pre. unique.†")
+colnames(unique_peptidecount_postproc_table) <- c("Samples","Post. unique.€")
+
+peptidecount_preproc_table$Samples <- gsub("Peptides.", "", peptidecount_preproc_table$Samples, perl=TRUE)
+peptidecount_postproc_table$Samples <- gsub("Peptides.", "", peptidecount_postproc_table$Samples, perl=TRUE)
+unique_peptidecount_preproc_table$Samples <- gsub("Unique.peptides.", "", unique_peptidecount_preproc_table$Samples, perl=TRUE)
+unique_peptidecount_postproc_table$Samples <- gsub("Unique.peptides.", "", unique_peptidecount_postproc_table$Samples, perl=TRUE)
+
+peptidecount_table <- merge(x=peptidecount_preproc_table, y=peptidecount_postproc_table,
+                            by.x=c("Samples"), by.y=c("Samples"))
+peptidecount_table <- merge(x=peptidecount_table, y=unique_peptidecount_preproc_table,
+                            by.x=c("Samples"), by.y=c("Samples"))
+peptidecount_table <- merge(x=peptidecount_table, y=unique_peptidecount_postproc_table,
+                            by.x=c("Samples"), by.y=c("Samples"))
+save(peptidecount_table, file = paste(dir,"Peptide_count_table.rda", sep=""))
+
+
+
+# Save tables
+
+mat1 <- rbind(number_of_samples, tmp_preproc_protein_groups, tmp_preproc_reverse, tmp_preproc_contaminants, total_preproc_proteins, Sprot_sum_preproc_ALL,Trembl_sum_preproc_ALL, nonisoform_proteincount_preproc, Sprot_sum_preproc_noniso, Trembl_sum_preproc_noniso, total_preproc_peptides, total_preproc_uniquepeptides, tmp_preproc_peptides_more_than_1, preproc_gene_count_1)
+table_rownames <- c("Number of samples", "Number of protein groups", "Number of reverse decoys^", "Number of contaminants^", "Total number of proteins§", "....SwissProt", "....Trembl", "Total number of non-isoformsª", "....SwissProt.",  "....Trembl.","Total number of peptides¶" , "Total number of unique peptides†","Protein groups with 2 or more mapped peptides*", "Protein groups mapped to unique gene•")
+rownames(mat1) <- table_rownames
+colnames(mat1) <- "Pre-processed"
+
+
+mat2 <- rbind(number_of_samples, total_filtered_protein_groups, tmp_postproc_reverse, tmp_postproc_contaminants, total_postproc_proteins, Sprot_sum_postproc_ALL,Trembl_sum_postproc_ALL, nonisoform_proteincount_postproc, Sprot_sum_postproc_noniso, Trembl_sum_postproc_noniso, total_postproc_peptides, total_postroc_uniquepeptides,tmp_postproc_peptides_more_than_1, postproc_gene_count_1)
+rownames(mat2) <- table_rownames
+colnames(mat2) <- "Post-processed"
+
+table1 <- cbind(mat1, mat2)
+save(table1, file = paste(dir,"table1.rda", sep=""))
+
+
+save(tmp_peptides_long, file = paste(dir,"peptide_density.rda", sep=""))
+save(tmp_iBAQs_pre_normalised_long, file = paste(dir,"iBAQ_pre_normalised.rda", sep=""))
+save(tmp_iBAQs_ppb_normalised_long, file = paste(dir,"iBAQ_ppb_normalised.rda", sep=""))
+save(tmp_iBAQs_plot, file = paste(dir,"iBAQ_plot.rda", sep=""))
+
+
+# PCA
+tmp_iBAQs_pre_normalised <- tmp[ ,c(grep("iBAQ.", colnames(tmp))) ]
+pca_iBAQ <- prcomp(t(tmp_iBAQs_pre_normalised), scale = FALSE)
+pca_plot_data <- data.frame(pca_iBAQ$x[,1:2]) # Take components 1 and 2
+save(pca_plot_data, file = paste(dir,"iBAQ_PCA_plot.rda", sep=""))
+```
+
+## Summary
+
+Summary of output from MaxQuant (proteinGroups.txt).  
+PXDID: PXD004143  
+Protein reference: Human Reference Proteome (UniProt, May 2019)  
+Dataset: /Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD004143/proteinGroups.txt  
+
+
+Table 1. Summary   
+```{r table1, echo = FALSE}
+load(paste(dir,"table1.rda", sep=""))
+kable(table1, row.names=TRUE)
+```
+
+**^** Some protein groups containing reverse decoys and/or contaminant entries present within are not marked as "+" in "Potential.contaminant" or "Reverse" fields in the output and therefore the total number of contaminants and/or reverse decoys counted here may be less than those present within the protein groups.  
+**§** The total number of proteins present across all protein groups. Number of SwissProt and Trembl entries within are counted. Total number of proteins in preprocessed data includes contaminants, reverse decoys, SwissProt and Trembl proteins. In post-processed data, total number of proteins includes only SwissProt and Trembl entries.    
+**ª** Total number of proteins excluding isoforms present across all protein groups. Total number of non-isoform SwissProt and Trembl entries within.    
+**¶** Sum of peptides that are mapped across all protein groups.    
+**†** The total number of unique peptides associated with the protein group (i.e. these peptides are not shared with another protein group).    
+  * Protein groups consisting proteins to which 2 or more peptides are mapped.    
+  • Protein groups consisting proteins which are mapped to an unique Ensembl Gene ID.
+
+
+## Pre-processed data
+Output from MaxQuant without any downstream processing  
+
+  
+## Post-processed data  
+Procecssed MaxQuant output  
+Filters applied:  
+  (i) Remove reverse decoys  
+  (ii) Remove contaminants  
+  (iii) Include protein groups that have 2 or more peptides mapped to protein  
+  (iv) Include protein groups wherein all protein IDs in the protein group are mapped to an unique Ensembl Gene ID  
+
+  
+Normalisation method: Fraction Of Total.  
+In this normalisation method each protein iBAQ intensity value is scaled to the total amount of signal in a given MS run (column) and transformed to parts per billion (ppb)
+
+
+## Including Plots
+```{r tmp_peptides_long, tmp_iBAQs_pre_normalised_long, tmp_iBAQs_ppb_normalised_long, tmp_iBAQs_plot, echo = FALSE}
+
+load(paste(dir,"peptide_density.rda", sep=""))
+
+ggplot(tmp_peptides_long, aes(x=Peptides, colour = Samples))+
+  geom_density()+
+  theme_bw()+
+  theme(legend.position = "bottom")+
+  theme(legend.key.size = unit(0.3,"line"))+
+  guides(col = guide_legend(ncol = 3))+
+  scale_x_log10()+
+  ggtitle("Peptide count")
+```
+  
+Boxplots with distribution of iBAQ values for each sample before and after FOT normalisation.  
+```{r tmp_iBAQs_plot, fig.height = 11, echo = FALSE}
+# iBAQ plot before and after normalisation
+load(paste(dir,"iBAQ_plot.rda", sep=""))
+ggplot(tmp_iBAQs_plot, aes(x=Samples, y = iBAQ, colour = Samples))+
+  geom_boxplot()+
+  theme_bw()+
+  theme(legend.position = "none")+
+  scale_y_log10()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  coord_flip()+
+  ggtitle("iBAQ") + facet_wrap(~Type)
+```
+.  
+Combined protein count plot  
+```{r Combined_proteincount_plot, fig.height = 8, echo = FALSE}
+# Protein count per sample before and after normalisation and with and without isoforms
+load(paste(dir,"Combined_proteincount_plot.rda", sep=""))
+ggplot(combined_protein_count_plot, aes(x=Samples, y = Protein_count, fill = Type))+
+  geom_col(position="dodge")+
+  theme_bw()+
+  ylab("Total number of proteins in all protein groups")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(legend.position="bottom")+
+  ggtitle("Protein counts per sample") + facet_wrap(~group, nrow=2)
+
+```
+
+Table 2. Protein counts.    
+  Total number of proteins before and after downstream processing  
+§ Total number of proteins (including isoforms) in pre-processed samples  
+¶ Total number of proteins (including isoforms) in post-proccessed samples  
+† Total number of proteins (without isoforms) in pre-processed samples  
+€ Total number of proteins (without isoforms) in post-proccessed samples  
+```{r Proteintable_FULL table, echo = FALSE}
+load(paste(dir,"Proteintable_FULL.rda", sep=""))
+kable(Proteintable_FULL, row.names=TRUE)
+```
+.
+Combined peptide count plot  
+```{r Peptidecount_sample_plot, fig.height = 8, echo = FALSE}
+# Peptide count per sample before and after normalisation
+load(paste(dir,"Peptide_count.rda", sep=""))
+ggplot(Peptidecount_sample_plot, aes(x=Samples, y = Peptide_count_sum, fill = Type))+
+  geom_col(position="dodge")+
+  theme_bw()+
+  ylab("Total number of peptides in all protein groups")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(legend.position="bottom")+
+  ggtitle("Peptide count per sample")+ facet_wrap(~group, nrow=2)
+```
+
+Table 3. Peptide counts.  
+  Total number of all peptides before and after downstream processing  
+§ Total number of all peptides in pre-processed samples  
+¶ Total number of peptides in post-proccessed samples  
+† Total number of unique peptides in pre-processed samples  
+€ Total number of unique peptides in post-proccessed samples  
+```{r peptide count table, echo = FALSE}
+load(paste(dir,"Peptide_count_table.rda", sep=""))
+kable(peptidecount_table, row.names=TRUE)
+```
+
+PCA plot.  
+```{r pca_plot_data, echo = FALSE}
+# PCA 
+load(paste(dir,"iBAQ_PCA_plot.rda", sep=""))
+ggplot(pca_plot_data, aes(x=PC1, y = PC2, colour = rownames(pca_plot_data)))+
+  geom_point(alpha=0.6)+
+  labs(x="PC1", y="PC2")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  labs(color="Samples") +
+  theme(legend.position = "bottom")+
+  theme(legend.key.size = unit(0.3,"line"))+
+  guides(col = guide_legend(ncol = 3))+
+  ggtitle("PCA")
+```
