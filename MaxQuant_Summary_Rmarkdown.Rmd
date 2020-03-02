@@ -3,6 +3,12 @@ title: "Summary statistics of post-processed MaxQuant output submitted to Expres
 output: pdf_document
 ---
 
+## Summary
+
+Summary of output from MaxQuant (proteinGroups.txt).  
+PXDID: PXD004143  
+Protein reference: Human Reference Proteome (UniProt, May 2019)  
+Dataset: /Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD004143/proteinGroups.txt  
 
 
 ```{r setup, include=FALSE}
@@ -407,12 +413,6 @@ pca_plot_data <- data.frame(pca_iBAQ$x[,1:2]) # Take components 1 and 2
 save(pca_plot_data, file = paste(dir,"iBAQ_PCA_plot.rda", sep=""))
 ```
 
-## Summary
-
-Summary of output from MaxQuant (proteinGroups.txt).  
-PXDID: PXD004143  
-Protein reference: Human Reference Proteome (UniProt, May 2019)  
-Dataset: /Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD004143/proteinGroups.txt  
 
 
 Table 1. Summary   
