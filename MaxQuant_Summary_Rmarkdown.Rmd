@@ -400,6 +400,8 @@ save(tmp_iBAQs_plot, file = paste(dir,"iBAQ_plot.rda", sep=""))
 
 # PCA
 tmp_iBAQs_pre_normalised <- tmp[ ,c(grep("iBAQ.", colnames(tmp))) ]
+tmp_iBAQs_pre_normalised[tmp_iBAQs_pre_normalised == "NaN"] <- 0
+tmp_iBAQs_pre_normalised[is.na(tmp_iBAQs_pre_normalised)] <- 0
 pca_iBAQ <- prcomp(t(tmp_iBAQs_pre_normalised), scale = FALSE)
 pca_plot_data <- data.frame(pca_iBAQ$x[,1:2]) # Take components 1 and 2
 save(pca_plot_data, file = paste(dir,"iBAQ_PCA_plot.rda", sep=""))
