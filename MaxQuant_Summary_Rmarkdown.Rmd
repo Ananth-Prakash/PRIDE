@@ -323,6 +323,7 @@ nonisoform_proteincount_postproc_long$group <- rep("Without isoforms", nrow(noni
 
 
 combined_protein_count_plot <- rbind(Proteincount_preproc_long, Proteincount_postproc_long, nonisoform_proteincount_preproc_long, nonisoform_proteincount_postproc_long)
+combined_protein_count_plot$Samples <- gsub("Protein.count", "", combined_protein_count_plot$Samples, perl=TRUE)
 save(combined_protein_count_plot, file = paste(dir,"Combined_proteincount_plot.rda", sep=""))
 ##############
 
