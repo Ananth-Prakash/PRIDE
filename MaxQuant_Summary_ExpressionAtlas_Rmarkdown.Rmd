@@ -19,13 +19,14 @@ library(knitr)
 library(stringr)
 library(mygene)
 library(ggplot2)
+library(reshape2)
 library(Biobase)
 library(finalfit)
 library(data.table)
 library(kableExtra)
 
 
-dir <- "/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD001608_10threads_noah/"
+dir <- "/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD001608_30threads_yoda/"
 
 tmp  <- read.table( paste(dir,"proteinGroups.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 
@@ -143,20 +144,18 @@ save(proteincount_table, file = paste(dir,"proteincount_plot_ExAtlas.rda", sep="
 
 
 
-#Count number of SwissProt entries including isoforms
+#Count number of SwissProt entries without isoforms
 tmp$Sprot_counts <- "NA"
 
 for(i in 1:nrow(tmp)){
     
-    x <- strsplit(tmp[ i, "Protein.IDs"], split = ";")
-    
-    tmp[i, "Sprot_counts_ALL"] <- sum(str_count(x[[1]], "sp\\|"))
+  y <- strsplit(tmp[ i, "Protein.IDs"], split = ";")
+  y <- unique(gsub("-\\d+", "", y[[1]], perl=TRUE)) # remove isoform number and consider unique entries
+  
+  tmp[i, "Sprot_counts"] <- sum(str_count(y, "sp\\|"))
 }
 
 Swissprot_sum <- sum(as.numeric(as.character(tmp$Sprot_counts)))
-
-
-
 
 
 #####
@@ -202,6 +201,14 @@ save(protein_overlap_freq, file = paste(dir,"protein_overlap_plot_ExAtlas.rda", 
 table1 <- rbind(number_of_samples, Swissprot_sum, number_of_peptides, number_of_unique_peptides)
 rownames(table1) <- c("Number of samples", "Number of identified proteins†", "Total number of mapped peptides¶", ".... Number of mapped unique peptides§")
 save(table1, file = paste(dir,"table1_ExAtlas.rda", sep=""))
+
+
+#Correlation between samples based on normalised iBAQ
+cor_values <- cor(tmp_iBAQs_ppb_normalised[-1])
+melted_cormat <- melt(cor_values)
+melted_cormat$Var1 <- gsub("ppb.iBAQ.", "", melted_cormat$Var1, perl=TRUE)
+melted_cormat$Var2 <- gsub("ppb.iBAQ.", "", melted_cormat$Var2, perl=TRUE)
+save(melted_cormat, file = paste(dir,"correlationmat_ExAtlas.rda", sep=""))
 ```
   
 # Table 1. Summary   
@@ -210,15 +217,15 @@ load(paste(dir,"table1_ExAtlas.rda", sep=""))
 kable(table1, row.names=TRUE, booktabs = T) %>%
 kable_styling(position="left")
 ```
-  **†** The total number of SwissProt proteins to which atleast 2 or more peptides from each sample are mapped to.  
+  **†** The total number of SwissProt proteins (non-isoforms) to which atleast 2 or more peptides from each sample are mapped to.  
   **¶** Sum of peptides that are mapped across all protein groups.    
   **§** The total number of unique peptides associated with the protein group (i.e. these peptides are not shared with another protein group).  
 
 # Post-processing filters applied:  
-  (i) Remove reverse decoys  
-  (ii) Remove contaminants  
-  (iii) Include protein groups that have 2 or more peptides mapped to protein  
-  (iv) Include protein groups wherein all protein IDs in the protein group are mapped to an unique Ensembl Gene ID  
+  (i) Remove reverse decoys.  
+  (ii) Remove contaminants.  
+  (iii) Include protein groups that have 2 or more peptides mapped to a protein.  
+  (iv) Include protein groups wherein all protein IDs in the protein group are mapped to an unique Ensembl Gene ID.  
 
     
 # Normalisation method:  
@@ -226,7 +233,7 @@ Fraction Of Total (FOT).
 Each protein iBAQ intensity value is scaled to the total amount of signal in a given MS run (column) and transformed to parts per billion (ppb)
 
 
-```{r tmp_iBAQs_ppb_table, echo = FALSE}
+```{r tmp_iBAQs_ppb_table, fig.height = 3, echo = FALSE}
 # iBAQ plot after normalisation
 load(paste(dir,"iBAQ_plot_ExAtlas.rda", sep=""))
 ggplot(tmp_iBAQs_ppb_table, aes(x=Samples, y = iBAQ, colour = Samples))+
@@ -241,7 +248,7 @@ ggplot(tmp_iBAQs_ppb_table, aes(x=Samples, y = iBAQ, colour = Samples))+
 ```
 Figure1. Boxplots with distribution of iBAQ values for each sample after FOT normalisation.  
  
-```{r protein_overlap_plot, echo = FALSE}
+```{r protein_overlap_plot, fig.height = 3, echo = FALSE}
 load(paste(dir,"protein_overlap_plot_ExAtlas.rda", sep=""))
 ggplot(protein_overlap_freq, aes(x=factor(Protein.overlap), y = freq))+
   geom_col()+
@@ -251,18 +258,16 @@ ggplot(protein_overlap_freq, aes(x=factor(Protein.overlap), y = freq))+
   theme(legend.position="none")+
   ggtitle("Protein group overlap")
 ```
-Figure2. Protein overlap.  Indicates the density of the number of protein groups that were identified across different samples. Protein groups can have more than one protien (isoforms included).  
-
-
-
-```{r Proteincount_plot, echo = FALSE}
+Figure2. Protein overlap.  Indicates the number of protein groups that were identified across different samples. Protein groups can have more than one protein (isoforms included).  
+  
+```{r Proteincount_plot, fig.height = 3, echo = FALSE}
 # Protein count per sample
 load(paste(dir,"proteincount_plot_ExAtlas.rda", sep=""))
 ggplot(proteincount_table, aes(x=Samples, y = Protein_count_sum, fill=Samples))+
   geom_col(position="dodge", alpha=0.5)+
   theme_bw()+
   theme(legend.position = "none")+
-  ylab("Total number of proteins across all protein groups")+
+  ylab("Total number of proteins across\nall protein groups")+
   scale_x_discrete(labels = function(x) str_wrap(x, width = 10))+
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   theme(legend.position="none")+
@@ -270,19 +275,33 @@ ggplot(proteincount_table, aes(x=Samples, y = Protein_count_sum, fill=Samples))+
 
 ```
 Figure3.  Protein counts in each sample. The total number of proteins present across all protein groups to which peptides from each sample are mapped.   
-
-```{r Peptidecount_plot, echo = FALSE}
+  
+```{r Peptidecount_plot, fig.height = 3, echo = FALSE}
 # Peptide count per sample
 load(paste(dir,"peptidecount_plot_ExAtlas.rda", sep=""))
 ggplot(peptidecount_table, aes(x=Samples, y = Peptide_count_sum, fill=Samples))+
   geom_col(position="dodge", alpha=0.5)+
   theme_bw()+
   theme(legend.position = "none")+
-  ylab("Total number of peptides across all protein groups")+
+  ylab("Total number of peptides across\nall protein groups")+
   scale_x_discrete(labels = function(x) str_wrap(x, width = 10))+
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   theme(legend.position="none")+
   ggtitle("Peptide counts per sample")
 
 ```
-Figure4.  Peptide counts in each sample
+Figure4.  Peptide counts in each sample. The total number of peptides that are mapped across all protein groups from each sample.  
+```{r Correlation_plot, fig.height = 5, fig.width = 6, echo = FALSE}
+# Correlation between samples
+load(paste(dir,"correlationmat_ExAtlas.rda", sep=""))
+ggplot(melted_cormat, aes(x=Var1, y=Var2, fill=value))+
+  geom_tile()+
+  theme_bw()+
+  xlab("")+
+  ylab("")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  guides(fill=guide_legend(title="Pearson r"))+
+  ggtitle("Correlation between samples")
+```
+  
+Figure5.  Correlation between samples. The pearson correlation between normalised intensities of each sample.  
