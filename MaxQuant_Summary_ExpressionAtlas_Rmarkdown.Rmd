@@ -73,8 +73,6 @@ Proteincount_per_sample <- function(df){
 
   setnames(Proteincount_persample, old = c(-1,-2), new = gsub("Intensity", "Protein.count",colnames(Proteincount_persample[,c(-1,-2)]),perl=TRUE))
   
-  
-
   Proteincount_sum_persample <- data.frame(lapply(Proteincount_persample[,c(-1,-2)], function(y){sum(y)}))
   return(Proteincount_sum_persample)
 }
