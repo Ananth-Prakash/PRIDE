@@ -3,10 +3,7 @@ title: "Summary of post-processed MaxQuant output in Expression Atlas"
 output: pdf_document
 ---
 
-PXDID:                PXD001608  
-Reference:            Human Reference Proteome (UniProt, May 2019)  
-Number of sequences:  95,915  
-Software:             MaxQuant v1.6.3.4  
+  
 
 
 ```{r setup, include=FALSE}
@@ -23,13 +20,106 @@ library(reshape2)
 library(Biobase)
 library(finalfit)
 library(data.table)
+library(tibble)
 library(kableExtra)
 
 
 dir <- "/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD001608_30threads_yoda/"
 
-tmp  <- read.table( paste(dir,"proteinGroups.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+tmp  <- read.table( paste(dir,"proteinGroups_trial.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+idf  <- read.table( paste(dir,"E-PROT.idf.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 
+submitter_name <-tibble::enframe(idf[idf$MAGE.TAB.Version == "Person Last Name" | idf$MAGE.TAB.Version == "Person First Name",3])
+submitter_email <- tibble::enframe(idf[idf$MAGE.TAB.Version == "Person Email",3])
+pubmed_id <- tibble::enframe(idf[idf$MAGE.TAB.Version == "PubMed ID",2])
+pride_id <- tibble::enframe(idf[idf$MAGE.TAB.Version == "Comment[SecondaryAccession]",2])
+pride_link <- tibble::enframe(paste("https://www.ebi.ac.uk/pride/archive/projects/", pride_id$value, sep=""))
+
+
+###### Functions ############
+#####
+# Normalise iBAQ values
+# FOT normalisation
+# define FOT normalisation function
+# FOT stands for Fraction Of Total. In this normalisation method each protein iBAQ intensity value is scaled to the total amount of signal in a given MS run (column) and transformed to parts per billion (ppb)
+
+fot.normalise <- function(x){
+  data.sum <-   apply(x, 2, function(y){sum(y, na.rm=TRUE)})
+  ##### do ppm normalisation
+  x.mat <- as.matrix(x)
+  x.mat.ppb <- apply(x.mat, 2, function(i) i/sum(i, na.rm = T) * 1000000000 )
+  x.mat.ppb <- as.data.frame(x.mat.ppb)
+  colnames(x.mat.ppb) <- paste("ppb.", colnames(x.mat.ppb), sep = "")
+  return(x.mat.ppb)
+}
+
+
+#####
+# Counting number of proteins in each sample
+# Since there is no direct protein count for each sample in MaxQuant output
+# we look at intensity coloumn for each sample and if the intensity value is 0, then the protein count is 0
+# for non zero intensity count the protein count for that sample is the same as in teh coloumn "Number.of.proteins".
+# https://mgimond.github.io/ES218/Week03a.html
+
+Proteincount_per_sample <- function(df){
+  Intensity_data_cols <- c(grep("Intensity.", colnames(df) ) )
+  Intensity <- df[,c("Protein.IDs","Number.of.proteins")]
+
+  Intensity <- cbind(Intensity, df[,Intensity_data_cols[1]:tail(Intensity_data_cols, n=1)])
+
+  Proteincount_persample <- Intensity
+  Proteincount_persample <- mutate_at(Proteincount_persample, vars(colnames(Proteincount_persample[,c(-1,-2)])), 
+                                                              list(~ ifelse( . == 0, 0, Proteincount_persample$Number.of.proteins)))
+
+  setnames(Proteincount_persample, old = c(-1,-2), new = gsub("Intensity", "Protein.count",colnames(Proteincount_persample[,c(-1,-2)]),perl=TRUE))
+  
+  
+
+  Proteincount_sum_persample <- data.frame(lapply(Proteincount_persample[,c(-1,-2)], function(y){sum(y)}))
+  return(Proteincount_sum_persample)
+}
+
+
+
+#####
+# Counting number of peptides in each sample
+
+Peptide_count_per_sample <- function(df){
+  Peptide_data_cols <- c(grep("", colnames(df)))
+  Peptidecount_sum_persample <- data.frame(lapply(df[,Peptide_data_cols[1]:tail(Peptide_data_cols, n=1)], function(y){sum(y)}))
+  Peptidecount_cnames <- colnames(Peptidecount_sum_persample)
+  Peptidecount_long <- gather(Peptidecount_sum_persample, Samples, Peptide_count_sum, Peptidecount_cnames[1]:tail(Peptidecount_cnames, n=1), factor_key=TRUE)
+  return(Peptidecount_long)
+}
+
+
+
+###### Pre-processing #######
+
+# count number of samples and protein groups (before filtering)
+number_of_proteingroups <- nrow(tmp)
+number_of_contaminants_pre <- nrow(tmp[ tmp[, "Potential.contaminant"] != "+", ])
+number_of_reversedecoys_pre <- nrow(tmp[ tmp[, "Potential.contaminant"] != "+", ])
+number_of_samples_pre <- ncol(tmp[ ,c(grep("Peptides.", colnames(tmp))) ])
+number_of_peptides_pre <- sum(tmp$Peptides)
+number_of_unique_peptides_pre <- sum(tmp$Unique.peptides)
+
+#Count number of SwissProt entries without isoforms (before filtering)
+tmp$Sprot_counts <- "NA"
+
+for(i in 1:nrow(tmp)){
+    
+  y <- strsplit(tmp[ i, "Protein.IDs"], split = ";")
+  y <- unique(gsub("-\\d+", "", y[[1]], perl=TRUE)) # remove isoform number and consider unique entries
+  
+  tmp[i, "Sprot_counts"] <- sum(str_count(y, "sp\\|"))
+}
+
+#Count number of SwissProt entries without isoforms (before filtering)
+Swissprot_sum_pre <- sum(as.numeric(as.character(tmp$Sprot_counts)))
+
+table1 <- rbind(number_of_samples_pre, number_of_contaminants_pre, number_of_reversedecoys_pre, Swissprot_sum_pre, number_of_peptides_pre, number_of_unique_peptides_pre)
+ 
 ###### Post-processing ######
 # Apply filter 1
 tmp <- tmp[ tmp[, "Reverse"] != "+", ]
@@ -39,7 +129,7 @@ tmp$"ENSG" <- "NA"
 tmp$"Gene.Name" <- "NA"
 tmp$"Gene.Symbol" <- "NA"
 tmp$"unique.gene.count" <- "NA"
-
+ 
 # Map UniProt Accessionto ENSEMBL Gene ID/Symbol
 for(i in 1:nrow(tmp)){
     
@@ -71,26 +161,15 @@ tmp <- tmp[tmp$ENSG != "NA" ,]
 tmp <- tmp[tmp$unique.gene.count == 1, ]
 tmp <- tmp[ tmp[, "Peptides"] > 1, ]
 
-# count number of samples and protein groups
-number_of_samples <- ncol(tmp[ ,c(grep("Peptides.", colnames(tmp))) ])
+# count number of samples and protein groups (after filtering)
+number_of_samples_post <- ncol(tmp[ ,c(grep("Peptides.", colnames(tmp))) ])
 #number_of_protein_groups <- nrow(tmp)
-number_of_peptides <- sum(tmp$Peptides)
-number_of_unique_peptides <- sum(tmp$Unique.peptides)
+number_of_peptides_post <- sum(tmp$Peptides)
+number_of_unique_peptides_post <- sum(tmp$Unique.peptides)
+number_of_contaminants_post <- nrow(tmp[ tmp[, "Potential.contaminant"] == "+", ])
+number_of_reversedecoys_post <- nrow(tmp[ tmp[, "Potential.contaminant"] == "+", ])
 
-# Normalise iBAQ values
-# FOT normalisation
-# define FOT normalisation function
-# FOT stands for Fraction Of Total. In this normalisation method each protein iBAQ intensity value is scaled to the total amount of signal in a given MS run (column) and transformed to parts per billion (ppb)
 
-fot.normalise <- function(x){
-  data.sum <-   apply(x, 2, function(y){sum(y, na.rm=TRUE)})
-  ##### do ppm normalisation
-  x.mat <- as.matrix(x)
-  x.mat.ppb <- apply(x.mat, 2, function(i) i/sum(i, na.rm = T) * 1000000000 )
-  x.mat.ppb <- as.data.frame(x.mat.ppb)
-  colnames(x.mat.ppb) <- paste("ppb.", colnames(x.mat.ppb), sep = "")
-  return(x.mat.ppb)
-}
 
 EXP_TYPE <- "MS1-quant"
 
@@ -112,69 +191,32 @@ save(tmp_iBAQs_ppb_table, file = paste(dir,"iBAQ_plot_ExAtlas.rda", sep=""))
 
 
 #####
-# Counting number of proteins in each sample
-# Since there is no direct protein count for each sample in MaxQuant output
-# we look at intensity coloumn for each sample and if the intensity value is 0, then the protein count is 0
-# for non zero intensity count the protein count for that sample is the same as in teh coloumn "Number.of.proteins".
-# https://mgimond.github.io/ES218/Week03a.html
+# Counting number of proteins in each sample (post-processed)
 
-Proteincount_per_sample <- function(df){
-  Intensity_data_cols <- c(grep("Intensity.", colnames(df) ) )
-  Intensity <- df[,c("Protein.IDs","Number.of.proteins")]
-
-  Intensity <- cbind(Intensity, df[,Intensity_data_cols[1]:tail(Intensity_data_cols, n=1)])
-
-  Proteincount_persample <- Intensity
-  Proteincount_persample <- mutate_at(Proteincount_persample, vars(colnames(Proteincount_persample[,c(-1,-2)])), 
-                                                              list(~ ifelse( . == 0, 0, Proteincount_persample$Number.of.proteins)))
-
-  setnames(Proteincount_persample, old = c(-1,-2), new = gsub("Intensity", "Protein.count",colnames(Proteincount_persample[,c(-1,-2)]),perl=TRUE))
-  
-  
-
-  Proteincount_sum_persample <- data.frame(lapply(Proteincount_persample[,c(-1,-2)], function(y){sum(y)}))
-  return(Proteincount_sum_persample)
-}
-
-Proteincount_persample <- Proteincount_per_sample(tmp)
-Proteincount_cnames <- colnames(Proteincount_persample)
-proteincount_table <- gather(Proteincount_persample, Samples, Protein_count_sum, Proteincount_cnames[1]:tail(Proteincount_cnames, n=1), factor_key=TRUE)
-proteincount_table$Samples <- gsub("Protein.count.", "", proteincount_table$Samples, perl=TRUE) 
-save(proteincount_table, file = paste(dir,"proteincount_plot_ExAtlas.rda", sep=""))
+Proteincount_persample_post <- Proteincount_per_sample(tmp)
+Proteincount_cnames_post <- colnames(Proteincount_persample_post)
+proteincount_table_post <- gather(Proteincount_persample_post, Samples, Protein_count_sum, Proteincount_cnames_post[1]:tail(Proteincount_cnames_post, n=1), factor_key=TRUE)
+proteincount_table_post$Samples <- gsub("Protein.count.", "", proteincount_table_post$Samples, perl=TRUE) 
+save(proteincount_table_post, file = paste(dir,"proteincount_plot_ExAtlas.rda", sep=""))
 
 
-
-#Count number of SwissProt entries without isoforms
-tmp$Sprot_counts <- "NA"
-
-for(i in 1:nrow(tmp)){
-    
-  y <- strsplit(tmp[ i, "Protein.IDs"], split = ";")
-  y <- unique(gsub("-\\d+", "", y[[1]], perl=TRUE)) # remove isoform number and consider unique entries
-  
-  tmp[i, "Sprot_counts"] <- sum(str_count(y, "sp\\|"))
-}
-
-Swissprot_sum <- sum(as.numeric(as.character(tmp$Sprot_counts)))
+#####
+#Count number of SwissProt entries without isoforms (after filtering)
+Swissprot_sum_post <- sum(as.numeric(as.character(tmp$Sprot_counts)))
 
 
 #####
 # Counting number of peptides in each sample
-Peptide_count_per_sample <- function(df){
-  Peptide_data_cols <- c(grep("", colnames(df)))
-  Peptidecount_sum_persample <- data.frame(lapply(df[,Peptide_data_cols[1]:tail(Peptide_data_cols, n=1)], function(y){sum(y)}))
-  Peptidecount_cnames <- colnames(Peptidecount_sum_persample)
-  Peptidecount_long <- gather(Peptidecount_sum_persample, Samples, Peptide_count_sum, Peptidecount_cnames[1]:tail(Peptidecount_cnames, n=1), factor_key=TRUE)
-  return(Peptidecount_long)
-}
-
 peptidecount_persample <- tmp[, c(grep("Peptides.", colnames(tmp)))]
 peptidecount_table <- Peptide_count_per_sample(peptidecount_persample )
 peptidecount_table$Samples <- gsub("Peptides.", "", peptidecount_table$Samples, perl=TRUE) 
 save(peptidecount_table, file = paste(dir,"peptidecount_plot_ExAtlas.rda", sep=""))
 
 
-#####
+
+##############
+## For Plots
+
 # Protein identification overlap
 # counting number of proteins that are found across different samples.
 Protein_overlap <- function(df){
@@ -198,9 +240,15 @@ tmp <- cbind(tmp, Protein_overlap_all)
 protein_overlap_freq <- tmp %>% plyr::count('Protein.overlap')
 save(protein_overlap_freq, file = paste(dir,"protein_overlap_plot_ExAtlas.rda", sep=""))
 
-table1 <- rbind(number_of_samples, Swissprot_sum, number_of_peptides, number_of_unique_peptides)
-rownames(table1) <- c("Number of samples", "Number of identified proteins†", "Total number of mapped peptides¶", ".... Number of mapped unique peptides§")
-save(table1, file = paste(dir,"table1_ExAtlas.rda", sep=""))
+
+
+table2 <- rbind(number_of_samples_post, number_of_contaminants_post, number_of_reversedecoys_post, Swissprot_sum_post, number_of_peptides_post, number_of_unique_peptides_post)
+
+table <- cbind(table1, table2)
+rownames(table) <- c("Number of samples", "Number of contaminants•", "Number of reverse decoys^", "Number of identified proteins†", "Total number of mapped peptides¶", ".... Number of mapped unique peptides§")
+colnames(table) <- c("Pre-processed", "Post-processed")
+save(table, file = paste(dir,"table_ExAtlas.rda", sep=""))
+
 
 
 #Correlation between samples based on normalised iBAQ
@@ -211,24 +259,47 @@ melted_cormat$Var2 <- gsub("ppb.iBAQ.", "", melted_cormat$Var2, perl=TRUE)
 save(melted_cormat, file = paste(dir,"correlationmat_ExAtlas.rda", sep=""))
 ```
   
-# Table 1. Summary   
-```{r table1, echo = FALSE}
-load(paste(dir,"table1_ExAtlas.rda", sep=""))
-kable(table1, row.names=TRUE, booktabs = T) %>%
-kable_styling(position="left")
-```
-  **†** The total number of SwissProt proteins (non-isoforms) to which atleast 2 or more peptides from each sample are mapped to.  
-  **¶** Sum of peptides that are mapped across all protein groups.    
-  **§** The total number of unique peptides associated with the protein group (i.e. these peptides are not shared with another protein group).  
+<!--
+Section to print in PDF document
+-->
 
-# Post-processing filters applied:  
-  (i) Remove reverse decoys.  
-  (ii) Remove contaminants.  
-  (iii) Include protein groups that have 2 or more peptides mapped to a protein.  
-  (iv) Include protein groups wherein all protein IDs in the protein group are mapped to an unique Ensembl Gene ID.  
+PRIDE dataset identifier: `r pride_id$value`  
+PRIDE dataset: `r pride_link$value`  
+Reference: Human Reference Proteome (UniProt, May 2019)  
+Number of sequences: 95,915  
+Software: MaxQuant v1.6.3.4  
+Operating System: Red Hat Enterprise Linux Server  
+
+Original dataset submitter: `r submitter_name$value`  
+PubMed ID: `r pubmed_id$value`  
+E-mail: `r submitter_email$value`  
+ 
+
+# Table. Summary   
+
+MaxQuant output before and after processing  
+```{r table, echo = FALSE}
+load(paste(dir,"table_ExAtlas.rda", sep=""))
+kable(table, row.names=TRUE, booktabs = T) %>%
+kable_styling(position="left")  
+```
+ 
+\setlength{\leftskip}{0.5cm}  • The total number of protein groups found to be a commonly occurring contaminant.  
+\setlength{\leftskip}{0.5cm}**^** The total number of protein groups with a peptide derived from the reversed part of the decoy database.  
+\setlength{\leftskip}{0.5cm}**†** The total number of SwissProt proteins (non-isoforms) to which atleast 2 or more peptides from each sample are mapped to.  
+\setlength{\leftskip}{0.5cm}**¶** Sum of peptides that are mapped across all protein groups.    
+\setlength{\leftskip}{0.5cm}**§** The total number of unique peptides associated with the protein group (i.e. these peptides are not shared with another protein group).  
+
+\setlength{\leftskip}{0pt}
+
+# Post-processing filters applied:
+(i) Remove reverse decoys.
+(ii) Remove contaminants.
+(iii) Include protein groups that have 2 or more peptides mapped to a protein.
+(iv) Include protein groups wherein all protein IDs within are mapped to an unique Ensembl Gene ID.
 
     
-# Normalisation method:  
+# Normalisation method:
 Fraction Of Total (FOT).  
 Each protein iBAQ intensity value is scaled to the total amount of signal in a given MS run (column) and transformed to parts per billion (ppb)
 
@@ -250,21 +321,23 @@ Figure1. Boxplots with distribution of iBAQ values for each sample after FOT nor
  
 ```{r protein_overlap_plot, fig.height = 3, echo = FALSE}
 load(paste(dir,"protein_overlap_plot_ExAtlas.rda", sep=""))
-ggplot(protein_overlap_freq, aes(x=factor(Protein.overlap), y = freq))+
+ggplot(protein_overlap_freq[protein_overlap_freq$Protein.overlap != 0, ], aes(x=factor(Protein.overlap), y = freq))+
   geom_col()+
+  geom_text(stat = 'identity',aes(label =freq, vjust = -0.2), size=2)+
   theme_bw()+
   xlab("Identified in number of samples") +
   ylab("Number of protein groups")+
   theme(legend.position="none")+
   ggtitle("Protein group overlap")
 ```
-Figure2. Protein overlap.  Indicates the number of protein groups that were identified across different samples. Protein groups can have more than one protein (isoforms included).  
+Figure2. Protein overlap.  Indicates the number of protein groups that were identified across different samples. Protein groups can have more than one protein.  
   
 ```{r Proteincount_plot, fig.height = 3, echo = FALSE}
-# Protein count per sample
+# Protein count per sample after filtering
 load(paste(dir,"proteincount_plot_ExAtlas.rda", sep=""))
-ggplot(proteincount_table, aes(x=Samples, y = Protein_count_sum, fill=Samples))+
+ggplot(proteincount_table_post, aes(x=Samples, y = Protein_count_sum, fill=Samples))+
   geom_col(position="dodge", alpha=0.5)+
+  geom_text(stat = 'identity',aes(label =Protein_count_sum, vjust = -0.2), size=2)+
   theme_bw()+
   theme(legend.position = "none")+
   ylab("Total number of proteins across\nall protein groups")+
@@ -281,6 +354,7 @@ Figure3.  Protein counts in each sample. The total number of proteins present ac
 load(paste(dir,"peptidecount_plot_ExAtlas.rda", sep=""))
 ggplot(peptidecount_table, aes(x=Samples, y = Peptide_count_sum, fill=Samples))+
   geom_col(position="dodge", alpha=0.5)+
+  geom_text(stat = 'identity',aes(label =Peptide_count_sum, vjust = -0.2), size=2)+
   theme_bw()+
   theme(legend.position = "none")+
   ylab("Total number of peptides across\nall protein groups")+
@@ -300,6 +374,7 @@ ggplot(melted_cormat, aes(x=Var1, y=Var2, fill=value))+
   xlab("")+
   ylab("")+
   theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  #guides(fill=guide_legend(title=expression(paste("Pearson R"^2))))+
   guides(fill=guide_legend(title="Pearson r"))+
   ggtitle("Correlation between samples")
 ```
