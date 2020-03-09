@@ -239,9 +239,10 @@ protein_overlap_freq <- tmp %>% plyr::count('Protein.overlap')
 save(protein_overlap_freq, file = paste(dir,"protein_overlap_plot_ExAtlas.rda", sep=""))
 
 
-
 table2 <- rbind(number_of_samples_post, number_of_contaminants_post, number_of_reversedecoys_post, Swissprot_sum_post, number_of_peptides_post, number_of_unique_peptides_post)
 
+
+#### Summary table
 table <- cbind(table1, table2)
 rownames(table) <- c("Number of samples", "Number of contaminants•", "Number of reverse decoys^", "Number of identified proteins†", "Total number of mapped peptides¶", ".... Number of mapped unique peptides§")
 colnames(table) <- c("Pre-processed", "Post-processed")
