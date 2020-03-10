@@ -26,7 +26,7 @@ library(kableExtra)
 
 dir <- "/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD001608_30threads_yoda/"
 
-tmp  <- read.table( paste(dir,"proteinGroups_trial.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+tmp  <- read.table( paste(dir,"proteinGroups.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 idf  <- read.table( paste(dir,"E-PROT.idf.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 
 submitter_name <-tibble::enframe(idf[idf$MAGE.TAB.Version == "Person Last Name" | idf$MAGE.TAB.Version == "Person First Name",3])
@@ -64,16 +64,25 @@ fot.normalise <- function(x){
 Proteincount_per_sample <- function(df){
   Intensity_data_cols <- c(grep("Intensity.", colnames(df) ) )
   Intensity <- df[,c("Protein.IDs","Number.of.proteins")]
-
-  Intensity <- cbind(Intensity, df[,Intensity_data_cols[1]:tail(Intensity_data_cols, n=1)])
-
-  Proteincount_persample <- Intensity
-  Proteincount_persample <- mutate_at(Proteincount_persample, vars(colnames(Proteincount_persample[,c(-1,-2)])), 
-                                                              list(~ ifelse( . == 0, 0, Proteincount_persample$Number.of.proteins)))
-
-  setnames(Proteincount_persample, old = c(-1,-2), new = gsub("Intensity", "Protein.count",colnames(Proteincount_persample[,c(-1,-2)]),perl=TRUE))
   
-  Proteincount_sum_persample <- data.frame(lapply(Proteincount_persample[,c(-1,-2)], function(y){sum(y)}))
+  Proteincount_persample <- Intensity
+  
+  Proteincount_persample$Sprot_counts <- NA
+  
+  for(i in 1:nrow(Proteincount_persample)){  
+    y <- strsplit(Proteincount_persample[ i, "Protein.IDs"], split = ";")
+    y <- unique(gsub("-\\d+", "", y[[1]], perl=TRUE)) # remove isoform number and consider unique entries
+    Proteincount_persample[i, "Sprot_counts"] <- sum(str_count(y, "sp\\|")) # only count SwissProt entries
+  }
+  
+  Proteincount_persample <- cbind(Proteincount_persample, df[,Intensity_data_cols[1]:tail(Intensity_data_cols, n=1)])
+  
+  Proteincount_persample <- mutate_at(Proteincount_persample, vars(colnames(Proteincount_persample[,c(-1,-2, -3)])), 
+                                      list(~ ifelse( . == 0, 0, Proteincount_persample$Sprot_counts)))
+  
+  setnames(Proteincount_persample, old = c(-1,-2,-3), new = gsub("Intensity", "Protein.count",colnames(Proteincount_persample[,c(-1,-2,-3)]),perl=TRUE))
+  
+  Proteincount_sum_persample <- data.frame(lapply(Proteincount_persample[,c(-1,-2,-3)], function(y){sum(y)}))
   return(Proteincount_sum_persample)
 }
 
@@ -252,26 +261,34 @@ save(table, file = paste(dir,"table_ExAtlas.rda", sep=""))
 
 #Correlation between samples based on normalised iBAQ
 cor_values <- cor(tmp_iBAQs_ppb_normalised[-1])
-melted_cormat <- melt(cor_values)
+row.order <- hclust(dist(cor_values))$order
+col.order <- hclust(dist(t(cor_values)))$order
+cor_values_clustered <- cor_values[row.order, col.order]
+melted_cormat <- melt(cor_values_clustered)
 melted_cormat$Var1 <- gsub("ppb.iBAQ.", "", melted_cormat$Var1, perl=TRUE)
 melted_cormat$Var2 <- gsub("ppb.iBAQ.", "", melted_cormat$Var2, perl=TRUE)
 save(melted_cormat, file = paste(dir,"correlationmat_ExAtlas.rda", sep=""))
+
+colnames(cor_values) <- gsub("ppb.iBAQ.", "", colnames(cor_values), perl=TRUE)
+rownames(cor_values) <- gsub("ppb.iBAQ.", "", rownames(cor_values), perl=TRUE)
+save(cor_values, file = paste(dir,"correlationmat1_ExAtlas.rda", sep=""))
+
 ```
   
 <!--
 Section to print in PDF document
 -->
 
-PRIDE dataset identifier: `r pride_id$value`  
-PRIDE dataset: `r pride_link$value`  
-Reference: Human Reference Proteome (UniProt, May 2019)  
-Number of sequences: 95,915  
-Software: MaxQuant v1.6.3.4  
-Operating System: Red Hat Enterprise Linux Server  
+PRIDE dataset identifier:\hspace{15pt}   `r pride_id$value`  
+PRIDE dataset:\hspace{58pt}              `r pride_link$value`  
+Reference:\hspace{83pt}                  Human Reference Proteome (UniProt, May 2019)  
+Number of sequences:\hspace{33pt}        95,915  
+Software:\hspace{87pt}                   MaxQuant v1.6.3.4  
+Operating System:\hspace{46pt}           Red Hat Enterprise Linux Server  
 
-Original dataset submitter: `r submitter_name$value`  
-PubMed ID: `r pubmed_id$value`  
-E-mail: `r submitter_email$value`  
+Original dataset submitter:\hspace{9pt} `r submitter_name$value`  
+PubMed ID:\hspace{75pt}                 `r pubmed_id$value`  
+E-mail:\hspace{97pt}                    `r submitter_email$value`  
  
 
 # Table. Summary   
@@ -283,7 +300,7 @@ kable(table, row.names=TRUE, booktabs = T) %>%
 kable_styling(position="left")  
 ```
  
-\setlength{\leftskip}{0.5cm}  • The total number of protein groups found to be a commonly occurring contaminant.  
+\setlength{\leftskip}{0.5cm}• The total number of protein groups found to be a commonly occurring contaminant.  
 \setlength{\leftskip}{0.5cm}**^** The total number of protein groups with a peptide derived from the reversed part of the decoy database.  
 \setlength{\leftskip}{0.5cm}**†** The total number of SwissProt proteins (non-isoforms) to which atleast 2 or more peptides from each sample are mapped to.  
 \setlength{\leftskip}{0.5cm}**¶** Sum of peptides that are mapped across all protein groups.    
@@ -316,8 +333,9 @@ ggplot(tmp_iBAQs_ppb_table, aes(x=Samples, y = iBAQ, colour = Samples))+
   #coord_flip()+
   ggtitle("iBAQ")
 ```
-Figure1. Boxplots with distribution of iBAQ values for each sample after FOT normalisation.  
+Figure 1. Boxplots with distribution of iBAQ values for each sample after FOT normalisation.  
  
+\vspace{20pt} 
 ```{r protein_overlap_plot, fig.height = 3, echo = FALSE}
 load(paste(dir,"protein_overlap_plot_ExAtlas.rda", sep=""))
 ggplot(protein_overlap_freq[protein_overlap_freq$Protein.overlap != 0, ], aes(x=factor(Protein.overlap), y = freq))+
@@ -327,9 +345,10 @@ ggplot(protein_overlap_freq[protein_overlap_freq$Protein.overlap != 0, ], aes(x=
   xlab("Identified in number of samples") +
   ylab("Number of protein groups")+
   theme(legend.position="none")+
-  ggtitle("Protein group overlap")
+  ggtitle("Proteins commonly identified across samples")
 ```
-Figure2. Protein overlap.  Indicates the number of protein groups that were identified across different samples. Protein groups can have more than one protein.  
+Figure 2. Protein overlap.  Indicates the number of protein groups that were identified across different samples. Protein groups were counted as present in a sample when the sample had registered intensity. Protein groups can have more than one protein within.  
+  
   
 ```{r Proteincount_plot, fig.height = 3, echo = FALSE}
 # Protein count per sample after filtering
@@ -343,11 +362,12 @@ ggplot(proteincount_table_post, aes(x=Samples, y = Protein_count_sum, fill=Sampl
   scale_x_discrete(labels = function(x) str_wrap(x, width = 10))+
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   theme(legend.position="none")+
-  ggtitle("Protein counts per sample")
+  ggtitle("Number of proteins idnetified in each sample")
 
 ```
-Figure3.  Protein counts in each sample. The total number of proteins present across all protein groups to which peptides from each sample are mapped.   
+Figure 3.  Protein counts in each sample. The total number of proteins (SwissProt non-isoforms) from all protein groups to which peptides from each sample are mapped.   
   
+\vspace{20pt} 
 ```{r Peptidecount_plot, fig.height = 3, echo = FALSE}
 # Peptide count per sample
 load(paste(dir,"peptidecount_plot_ExAtlas.rda", sep=""))
@@ -360,10 +380,12 @@ ggplot(peptidecount_table, aes(x=Samples, y = Peptide_count_sum, fill=Samples))+
   scale_x_discrete(labels = function(x) str_wrap(x, width = 10))+
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   theme(legend.position="none")+
-  ggtitle("Peptide counts per sample")
+  ggtitle("Number of peptides mapped per sample")
 
 ```
-Figure4.  Peptide counts in each sample. The total number of peptides that are mapped across all protein groups from each sample.  
+Figure 4.  Peptide counts in each sample. The total number of peptides that are mapped across all protein groups from each sample.  
+  
+
 ```{r Correlation_plot, fig.height = 5, fig.width = 6, echo = FALSE}
 # Correlation between samples
 load(paste(dir,"correlationmat_ExAtlas.rda", sep=""))
@@ -375,7 +397,25 @@ ggplot(melted_cormat, aes(x=Var1, y=Var2, fill=value))+
   theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   #guides(fill=guide_legend(title=expression(paste("Pearson R"^2))))+
   guides(fill=guide_legend(title="Pearson r"))+
-  ggtitle("Correlation between samples")
+  ggtitle("Clustered map of correlation between samples")
 ```
   
-Figure5.  Correlation between samples. The pearson correlation between normalised intensities of each sample.  
+Figure 5.  Correlation between samples. The Pearson correlation between normalised intensities of each sample. The pairwise Pearson correlation was calculated between sample iBAQs.   
+
+
+ <!--```{r Correlation_plot1, fig.height = 5, fig.width = 6, echo = FALSE}
+# Correlation between samples clustered
+load(paste(dir,"correlationmat1_ExAtlas.rda", sep=""))
+heatmap(cor_values , Colv=T, scale='none', cexRow=1, cexCol=1)
+``` -->
+
+# Glossary
+The descriptions of the terms used in here are taken from MaxQuant.  
+
+**Reverse**: This particular protein group contains no protein, made up of at least 50% of the peptides of the leading protein, with a peptide derived from the reversed part of the decoy database. These should be removed for further data analysis. The 50% rule is in place to prevent spurious protein hits to erroneously flag the protein group as reverse.  
+
+**Potential contaminant**: This particular protein group was found to be a commonly occurring contaminant. These should be removed for further data analysis.    
+
+**Peptides**: The total number of peptide sequences associated with the protein group (i.e. for all the proteins in the group).  
+
+**Unique peptides**: The total number of unique peptides associated with the protein group (i.e. these peptides are not shared with another protein group).  
