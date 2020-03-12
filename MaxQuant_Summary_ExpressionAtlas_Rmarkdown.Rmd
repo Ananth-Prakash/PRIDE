@@ -3,7 +3,7 @@ title: "Summary of reanalysed MaxQuant output exported into Expression Atlas"
 output: pdf_document
 ---
 
-  
+
 
 
 ```{r setup, include=FALSE}
@@ -323,7 +323,7 @@ kable_styling(position="left")
 # Post-processing filters applied:
 (i) Remove reverse decoys.
 (ii) Remove potential contaminants.
-(iii) Include protein groups that have 2 or more unique peptides mapped to a protein group.
+(iii) Include protein groups to which 2 or more unique peptides are mapped.
 (iv) Include protein groups wherein all protein IDs within are mapped to an unique Ensembl Gene ID.
 
     
@@ -420,7 +420,7 @@ ggplot(melted_cormat, aes(x=Var1, y=Var2, fill=value))+
 ```
   
   
-Figure 5.  Correlation between samples. The pairwise Pearson correlation was calculated between normalised intensities (iBAQs) of each sample and herirarchically clustered.  
+Figure 5.  Correlation between samples. The pairwise Pearson correlation was calculated between normalised intensities (iBAQs) of each sample and clustered heirarchically.  
   
 
  <!--```{r Correlation_plot1, fig.height = 5, fig.width = 6, echo = FALSE}
