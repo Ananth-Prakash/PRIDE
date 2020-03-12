@@ -303,7 +303,7 @@ Operating system:\hspace{47pt}           Red Hat Enterprise Linux Server
 # Summary table   
 
 MaxQuant output before and after processing.  
-The submitted original '.raw' files are run through MaxQuant; the output (pre-processed) is then normalised and filtered (post-processed) and the results uploaded to Expression Atlas.  
+The submitted original '.raw' files are run through MaxQuant; the output (pre-processed) intensities are then normalised, proteins mapped to Ensembl gene IDs and filtered results (post-processed) are uploaded to Expression Atlas.  
 ```{r table, echo = FALSE}
 load(paste(dir,"table_ExAtlas.rda", sep=""))
 kable(table, row.names=TRUE, booktabs = T) %>%
@@ -322,7 +322,7 @@ kable_styling(position="left")
 
 # Post-processing filters applied:
 (i) Remove reverse decoys.
-(ii) Remove contaminants.
+(ii) Remove potential contaminants.
 (iii) Include protein groups that have 2 or more unique peptides mapped to a protein group.
 (iv) Include protein groups wherein all protein IDs within are mapped to an unique Ensembl Gene ID.
 
@@ -350,7 +350,7 @@ ggplot(tmp_iBAQs_ppb_table, aes(x=factor(tmp_iBAQs_ppb_table$Samples, levels = u
 ```
 Figure 1. Boxplots with distribution of iBAQ values for each sample after FOT normalisation.  
  
-\vspace{20pt} 
+
 ```{r protein_overlap_plot, fig.height = 3, echo = FALSE}
 load(paste(dir,"protein_overlap_plot_ExAtlas.rda", sep=""))
 ggplot(protein_overlap_freq[protein_overlap_freq$Protein.overlap != 0, ], aes(x=factor(Protein.overlap), y = freq))+
@@ -403,9 +403,7 @@ ggplot(peptidecount_table, aes(x=factor(peptidecount_table$Samples, levels = pep
 
 ```
 Figure 4.  Peptide counts in each sample. The total number of peptides that are mapped across all protein groups from each sample.  
-  
-
-
+   
 ```{r Correlation_plot, fig.height = 5, fig.width = 6, echo = FALSE}
 # Correlation between samples
 load(paste(dir,"correlationmat_ExAtlas.rda", sep=""))
@@ -418,10 +416,12 @@ ggplot(melted_cormat, aes(x=Var1, y=Var2, fill=value))+
   #guides(fill=guide_legend(title=expression(paste("Pearson R"^2))))+
   guides(fill=guide_legend(title="Pearson r"))+
   ggtitle("Clustered map of correlation between samples")
+  
 ```
   
-Figure 5.  Correlation between samples. The pairwise Pearson correlation was calculated between normalised intensities (iBAQs) of each sample.    
-
+  
+Figure 5.  Correlation between samples. The pairwise Pearson correlation was calculated between normalised intensities (iBAQs) of each sample and herirarchically clustered.  
+  
 
  <!--```{r Correlation_plot1, fig.height = 5, fig.width = 6, echo = FALSE}
 # Correlation between samples clustered
@@ -430,7 +430,7 @@ heatmap(cor_values , Colv=T, scale='none', cexRow=1, cexCol=1)
 ``` -->
 
 # Glossary
-The descriptions of the terms used in here are taken from MaxQuant.  
+The descriptions of the terms used in here are taken from MaxQuant documentation.  
 
 **Reverse decoy**: This particular protein group contains no protein, made up of at least 50% of the peptides of the leading protein, with a peptide derived from the reversed part of the decoy database. These are removed for further data analysis. The 50% rule is in place to prevent spurious protein hits to erroneously flag the protein group as reverse.  
 
