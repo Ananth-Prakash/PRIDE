@@ -1,5 +1,5 @@
 ---
-title: "Summary of post-processed MaxQuant output in Expression Atlas"
+title: "Summary of reanalysed MaxQuant output exported into Expression Atlas"
 output: pdf_document
 ---
 
@@ -27,7 +27,7 @@ library(kableExtra)
 
 dir <- "/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD001608_30threads_yoda/"
 
-tmp  <- read.table( paste(dir,"proteinGroups_trial.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+tmp  <- read.table( paste(dir,"proteinGroups.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 idf  <- read.table( paste(dir,"E-PROT.idf.txt", sep="") , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 
 PI_name <-tibble::enframe(idf[idf$MAGE.TAB.Version == "Person Last Name" | idf$MAGE.TAB.Version == "Person First Name",3])
@@ -267,17 +267,31 @@ save(table, file = paste(dir,"table_ExAtlas.rda", sep=""))
 
 #Correlation between samples based on normalised iBAQ
 cor_values <- cor(tmp_iBAQs_ppb_normalised[-1])
+colnames(cor_values) <- gsub("ppb.iBAQ.", "", colnames(cor_values), perl=TRUE)
+rownames(cor_values) <- gsub("ppb.iBAQ.", "", rownames(cor_values), perl=TRUE)
 row.order <- hclust(dist(cor_values))$order
 col.order <- hclust(dist(t(cor_values)))$order
 cor_values_clustered <- cor_values[row.order, col.order]
 melted_cormat <- melt(cor_values_clustered)
-melted_cormat$Var1 <- gsub("ppb.iBAQ.", "", melted_cormat$Var1, perl=TRUE)
-melted_cormat$Var2 <- gsub("ppb.iBAQ.", "", melted_cormat$Var2, perl=TRUE)
 save(melted_cormat, file = paste(dir,"correlationmat_ExAtlas.rda", sep=""))
 
-colnames(cor_values) <- gsub("ppb.iBAQ.", "", colnames(cor_values), perl=TRUE)
-rownames(cor_values) <- gsub("ppb.iBAQ.", "", rownames(cor_values), perl=TRUE)
-save(cor_values, file = paste(dir,"correlationmat1_ExAtlas.rda", sep=""))
+
+#tmp_iBAQs <- tmp[ ,c(grep("iBAQ.", colnames(tmp))) ]
+#cor_values <- cor(tmp_iBAQs)
+#row.order <- hclust(dist(cor_values))$order
+#col.order <- hclust(dist(t(cor_values)))$order
+#cor_values_reorder <- cor_values[row.order, col.order]
+#melted_cormat <- melt(cor_values_reorder)
+#ggplot(melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+#  geom_tile()
+
+
+
+
+
+#colnames(cor_values) <- gsub("ppb.iBAQ.", "", colnames(cor_values), perl=TRUE)
+#rownames(cor_values) <- gsub("ppb.iBAQ.", "", rownames(cor_values), perl=TRUE)
+#save(cor_values, file = paste(dir,"correlationmat1_ExAtlas.rda", sep=""))
 
 ```
   
@@ -299,7 +313,7 @@ Quantification method:\hspace{25pt}      Label-free (baseline)
 Search database:\hspace{53pt}            Human Reference Proteome (UniProt, May 2019. 95,915 sequences)  
 Contaminant database:\hspace{25pt}       MaxQuant contaminants database (conf/contaminants.fasta)  
 Analysis software:\hspace{48pt}          MaxQuant v1.6.3.4  
-Operating system:\hspace{46pt}           Red Hat Enterprise Linux Server
+Operating system:\hspace{47pt}           Red Hat Enterprise Linux Server
 
 
  
@@ -307,7 +321,7 @@ Operating system:\hspace{46pt}           Red Hat Enterprise Linux Server
 # Summary table   
 
 MaxQuant output before and after processing.  
-The submitted original raw files are run through MaxQuant, the output (pre-processed) is then normalised and filtered (post-processed) and the results uploaded to Expression Atlas.  
+The submitted original '.raw' files are run through MaxQuant; the output (pre-processed) is then normalised and filtered (post-processed) and the results uploaded to Expression Atlas.  
 ```{r table, echo = FALSE}
 load(paste(dir,"table_ExAtlas.rda", sep=""))
 kable(table, row.names=TRUE, booktabs = T) %>%
@@ -317,7 +331,7 @@ kable_styling(position="left")
 \setlength{\leftskip}{0.5cm}* Data show in Expression Atlas.  
 \setlength{\leftskip}{0.5cm}• The total number of protein groups found to be a commonly occurring contaminant.  
 \setlength{\leftskip}{0.5cm}**^** The total number of protein groups with a peptide derived from the reversed part of the decoy database.  
-\setlength{\leftskip}{0.5cm}**†** The total number of SwissProt proteins (non-isoforms) to which at least 2 or more peptides from each sample are mapped to.  
+\setlength{\leftskip}{0.5cm}**†** The total number of non-isoform SwissProt proteins within th protein group, to which at least 2 or more peptides from each sample are mapped to.  
 \setlength{\leftskip}{0.5cm}**ª** Sum of peptides that are mapped across all protein groups.   
 \setlength{\leftskip}{0.5cm}**¢** The total number of protein groups which are mapped to an unique Ensembl Gene ID.  
 \setlength{\leftskip}{0.5cm}§ The total number of unique peptides associated with the protein group (i.e. these peptides are not shared with another protein group).  
@@ -332,13 +346,13 @@ kable_styling(position="left")
 
     
 # Normalisation method:
-Fraction Of Total (FOT).  
-Each protein iBAQ intensity value is scaled to the total amount of signal in a given MS run (column) and transformed to parts per billion (ppb)
+Fraction Of Total (FOT): Each protein iBAQ intensity value is scaled to the total amount of signal in a given MS run (column) and transformed to parts per billion (ppb)
 
 
-```{r tmp_iBAQs_ppb_table, fig.height = 3, echo = FALSE}
+```{r tmp_iBAQs_ppb_table, fig.height = 3, echo = FALSE, message=FALSE}
 # iBAQ plot after normalisation
 load(paste(dir,"iBAQ_plot_ExAtlas.rda", sep=""))
+suppressWarnings(print(
 ggplot(tmp_iBAQs_ppb_table, aes(x=factor(tmp_iBAQs_ppb_table$Samples, levels = unique(tmp_iBAQs_ppb_table$Samples)),
                                 y = iBAQ, colour = Samples))+
   geom_boxplot(na.rm=TRUE)+
@@ -349,7 +363,8 @@ ggplot(tmp_iBAQs_ppb_table, aes(x=factor(tmp_iBAQs_ppb_table$Samples, levels = u
   scale_x_discrete(labels = function(x) str_wrap(x, width = 10))+
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   #coord_flip()+
-  ggtitle("iBAQ")
+  ggtitle("FOT normalised iBAQ values")
+))
 ```
 Figure 1. Boxplots with distribution of iBAQ values for each sample after FOT normalisation.  
  
@@ -385,7 +400,7 @@ ggplot(proteincount_table_post, aes(x=factor(proteincount_table_post$Samples, le
   ggtitle("Total number of proteins identified in each sample")
 
 ```
-Figure 3.  Protein counts in each sample. The total number of proteins (SwissProt non-isoforms) from all protein groups to which peptides from each sample are mapped.   
+Figure 3.  Protein counts in each sample. The total number of proteins (SwissProt non-isoforms) from all protein groups to which at least 2 or more unique peptides from each sample are mapped to.   
   
 \vspace{20pt} 
 ```{r Peptidecount_plot, fig.height = 3, echo = FALSE}
@@ -423,7 +438,7 @@ ggplot(melted_cormat, aes(x=Var1, y=Var2, fill=value))+
   ggtitle("Clustered map of correlation between samples")
 ```
   
-Figure 5.  Correlation between samples. The Pearson correlation between normalised intensities of each sample. The pairwise Pearson correlation was calculated between sample iBAQs.   
+Figure 5.  Correlation between samples. The pairwise Pearson correlation was calculated between normalised intensities (iBAQs) of each sample.    
 
 
  <!--```{r Correlation_plot1, fig.height = 5, fig.width = 6, echo = FALSE}
@@ -435,9 +450,9 @@ heatmap(cor_values , Colv=T, scale='none', cexRow=1, cexCol=1)
 # Glossary
 The descriptions of the terms used in here are taken from MaxQuant.  
 
-**Reverse decoy**: This particular protein group contains no protein, made up of at least 50% of the peptides of the leading protein, with a peptide derived from the reversed part of the decoy database. These should be removed for further data analysis. The 50% rule is in place to prevent spurious protein hits to erroneously flag the protein group as reverse.  
+**Reverse decoy**: This particular protein group contains no protein, made up of at least 50% of the peptides of the leading protein, with a peptide derived from the reversed part of the decoy database. These are removed for further data analysis. The 50% rule is in place to prevent spurious protein hits to erroneously flag the protein group as reverse.  
 
-**Potential contaminant**: This particular protein group was found to be a commonly occurring contaminant. These should be removed for further data analysis.    
+**Potential contaminant**: This particular protein group was found to be a commonly occurring contaminant. These are removed for further data analysis.    
 
 **Peptides**: The total number of peptide sequences associated with the protein group (i.e. for all the proteins in the group).  
 
