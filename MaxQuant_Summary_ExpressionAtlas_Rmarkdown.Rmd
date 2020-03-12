@@ -275,24 +275,6 @@ cor_values_clustered <- cor_values[row.order, col.order]
 melted_cormat <- melt(cor_values_clustered)
 save(melted_cormat, file = paste(dir,"correlationmat_ExAtlas.rda", sep=""))
 
-
-#tmp_iBAQs <- tmp[ ,c(grep("iBAQ.", colnames(tmp))) ]
-#cor_values <- cor(tmp_iBAQs)
-#row.order <- hclust(dist(cor_values))$order
-#col.order <- hclust(dist(t(cor_values)))$order
-#cor_values_reorder <- cor_values[row.order, col.order]
-#melted_cormat <- melt(cor_values_reorder)
-#ggplot(melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
-#  geom_tile()
-
-
-
-
-
-#colnames(cor_values) <- gsub("ppb.iBAQ.", "", colnames(cor_values), perl=TRUE)
-#rownames(cor_values) <- gsub("ppb.iBAQ.", "", rownames(cor_values), perl=TRUE)
-#save(cor_values, file = paste(dir,"correlationmat1_ExAtlas.rda", sep=""))
-
 ```
   
 <!--
