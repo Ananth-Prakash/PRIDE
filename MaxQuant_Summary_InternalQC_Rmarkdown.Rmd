@@ -440,7 +440,7 @@ kable(table1, row.names=TRUE)
 **ª** Total number of proteins excluding isoforms present across all protein groups. Total number of non-isoform SwissProt and Trembl entries within.    
 **¶** Sum of peptides that are mapped across all protein groups.    
 **†** The total number of unique peptides associated with the protein group (i.e. these peptides are not shared with another protein group).    
-  * Proteins within protein groups to which 2 or more peptides are mapped.    
+  * Proteins within protein groups to which 2 or more peptides are mapped to.    
   • Proteins within protein groups which are mapped to an unique Ensembl Gene ID.
 
 
@@ -465,7 +465,7 @@ In this normalisation method each protein iBAQ intensity value is scaled to the 
 ```{r tmp_peptides_long, tmp_iBAQs_pre_normalised_long, tmp_iBAQs_ppb_normalised_long, tmp_iBAQs_plot, echo = FALSE}
 
 load(paste(dir,"peptide_density.rda", sep=""))
-
+suppressWarnings(print(
 ggplot(tmp_peptides_long, aes(x=Peptides, colour = Samples))+
   geom_density()+
   theme_bw()+
@@ -474,6 +474,7 @@ ggplot(tmp_peptides_long, aes(x=Peptides, colour = Samples))+
   guides(col = guide_legend(ncol = 3))+
   scale_x_log10()+
   ggtitle("Peptide count")
+))
 ```
 Figure 1. Peptide density.    
  
@@ -513,17 +514,17 @@ ggplot(combined_protein_count_plot, aes(x=factor(combined_protein_count_plot$Sam
 Figure 3. Protein count plot  
 
 
-Table 2. Protein counts.    
-  Total number of proteins before and after downstream processing  
-§ Total number of proteins (including isoforms) in pre-processed samples  
-¶ Total number of proteins (including isoforms) in post-proccessed samples  
-† Total number of proteins (without isoforms) in pre-processed samples  
-€ Total number of proteins (without isoforms) in post-proccessed samples  
+## Table 2. Protein counts.
+Total number of proteins before and after downstream processing 
 ```{r Proteintable_FULL table, echo = FALSE}
 load(paste(dir,"Proteintable_FULL.rda", sep=""))
 kable(Proteintable_FULL, row.names=TRUE)
 ```
-
+ 
+§ Total number of proteins (including isoforms) in pre-processed samples  
+¶ Total number of proteins (including isoforms) in post-proccessed samples  
+† Total number of proteins (without isoforms) in pre-processed samples  
+€ Total number of proteins (without isoforms) in post-proccessed samples  
 
 ```{r Peptidecount_sample_plot, fig.height = 8, echo = FALSE}
 # Peptide count per sample before and after normalisation
@@ -541,17 +542,17 @@ ggplot(Peptidecount_sample_plot, aes(x=factor(Peptidecount_sample_plot$Samples, 
 Figure 4. Peptide count plot   
 
 
-Table 3. Peptide counts.  
-  Total number of all peptides before and after downstream processing  
-§ Total number of all peptides in pre-processed samples  
-¶ Total number of peptides in post-proccessed samples  
-† Total number of unique peptides in pre-processed samples  
-€ Total number of unique peptides in post-proccessed samples  
+## Table 3. Peptide counts.
+Total number of all peptides before and after downstream processing  
 ```{r peptide count table, echo = FALSE}
 load(paste(dir,"Peptide_count_table.rda", sep=""))
 kable(peptidecount_table, row.names=TRUE)
 ```
 
+§ Total number of all peptides in pre-processed samples  
+¶ Total number of peptides in post-proccessed samples  
+† Total number of unique peptides in pre-processed samples  
+€ Total number of unique peptides in post-proccessed samples  
  
 ```{r pca_plot_data, echo = FALSE}
 # PCA 
