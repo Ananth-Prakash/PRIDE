@@ -189,7 +189,8 @@ write.table(combined_foldchange_file, "PXD012203_FoldChange_groupcomparison.txt"
 
 FOT_normalised_file <- read.table( "proteinGroups_final.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 log2_FC_file <- read.table( "PXD012203_FoldChange_groupcomparison.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
-
+# Remove NA Pvalues
+log2_FC_file <- log2_FC_file[complete.cases(log2_FC_file),]
 
 FOT_genes <- FOT_normalised_file[,c("Gene.ID", "Gene.Name")]
 log2_FC_genes <- log2_FC_file[,c("Gene.ID", "Gene.Name")]
