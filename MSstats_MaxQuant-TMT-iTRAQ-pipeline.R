@@ -177,35 +177,40 @@ combined_foldchange_file <- merge(x=group1, y=group2,
 write.table(combined_foldchange_file, "PXD012203_FoldChange_groupcomparison.txt", sep = "\t", row.names = FALSE, quote = FALSE )
 
 
+##### Additional processing
+## This section looks at postprocessd output from 
+# 1) FOT normalisation and 
+# 2) MS-StatsTMT postprocessing after calculating log2 foldchange
+# to keep same gene ids common between files.
+# This setp is done as it is desired to submit to Expression Atlas in this format.
+
+# NOTE: Postprocessing for FOT normalisation should be done and the output file be ready
+# before runnng this step.
+
+FOT_normalised_file <- read.table( "proteinGroups_final.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+log2_FC_file <- read.table( "PXD012203_FoldChange_groupcomparison.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 
 
+FOT_genes <- FOT_normalised_file[,c("Gene.ID", "Gene.Name")]
+log2_FC_genes <- log2_FC_file[,c("Gene.ID", "Gene.Name")]
 
-# ####### old code
-# #### If comparisons have to be made between certain conditions then specify
-# #### Check how many conditions are there to be compared. 
-# levels(quant.msstats$Condition)
-# # [1] "Alzheimers"   "Non_demented"
-#
-# #### The numerator is set to 1 and denominator is set to -1
-# #### All other places in the matrix related to other conditions are set to 0
-# #### Here for example Alzheimers is set to denominator and hence -1
-# comparison<-matrix(c(-1,1),nrow=1)
-# 
-# #### Set the column names. (Has to be in the same order as levels(quant.msstats$Condition) )
-# colnames(comparison) <- levels(quant.msstats$Condition)
-# 
-# #### Set the row name for the matrix
-# row.names(comparison)<-"Non_demented / Alzheimers"
-# 
-# 
-# test.comparison <- groupComparisonTMT(data = quant.msstats, contrast.matrix = comparison)
-# 
-# 
-# # The output (test.comparison) has multiple entries of same proteins because of their association with multiple protein groups.
-# # To filter out duplicate entries and to retain only one protein group, we retain that entry which has all the proteins that are also the majority proteins
-# # ie., those proteins that have > 50% of the peptides belonging to that protein group.
-# deduped_proteingroups <- merge(x=test.comparison, y=data.frame(proteinGroups_inp[,c('Majority.protein.IDs','ENSG','Gene.Symbol','Gene.Name')]),
-#                                by.x=c('Protein'), by.y=c('Majority.protein.IDs'),
-#                                all.x=FALSE, all.y=FALSE) 
-# 
-# test.comparison.names.genecount.pvalue.filtered <- deduped_proteingroups[deduped_proteingroups$adj.pvalue <= 0.05,]
+# get common genes
+merged_ids <- merge(x=FOT_genes, y=log2_FC_genes,
+                    by.x=c("Gene.ID", "Gene.Name"), by.y=c("Gene.ID", "Gene.Name"),
+                    all.x=FALSE, all.y=FALSE)
+
+# filter these genes from both files
+# the resulting file will have common genes between them.
+FOT_normalised_file <- merge(x=merged_ids, y=FOT_normalised_file,
+                             by.x=c("Gene.ID", "Gene.Name"),
+                             by.y=c("Gene.ID", "Gene.Name"),
+                             all.x=FALSE, all.y=FALSE)
+
+log2_FC_file <- merge(x=merged_ids, y=log2_FC_file,
+                             by.x=c("Gene.ID", "Gene.Name"),
+                             by.y=c("Gene.ID", "Gene.Name"),
+                             all.x=FALSE, all.y=FALSE)
+
+
+write.table(FOT_normalised_file, "ExpressionAtlas_proteinGroups_final.txt", sep = "\t", row.names = FALSE, quote = FALSE )
+write.table(log2_FC_file, "ExpressionAtlas_FoldChange_groupcomparison.txt", sep = "\t", row.names = FALSE, quote = FALSE )
