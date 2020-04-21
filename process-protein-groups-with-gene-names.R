@@ -30,7 +30,7 @@ BiocManager::install("mygene")
 
 library(mygene)
 
-setwd("/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD010271/")
+setwd("/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD012203_Reanalysis/")
 
 #In case that the library mygene was not already installed
 #if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -40,7 +40,7 @@ setwd("/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD010271/")
 if ( !exists("EXP_TYPE")) warning("Please specify experiment type variable: EXP_TYE")
 ## Specify experiment type, i.e. what type of quantification is used, MS1-based or MS2-based. As a rule of thumb, label free and SILAC is MS1-based, and iTRAQ and TMT is MS2-based.
 # EXP_TYPE <- "MS2-quant"
-EXP_TYPE <- "MS1-quant"
+EXP_TYPE <- "MS2-quant"
 
 
 
@@ -81,11 +81,34 @@ if(EXP_TYPE == "MS1-quant"){
 if(EXP_TYPE == "MS2-quant"){
   message("Collecting MS2 intensities")
   if( any(grepl("Reporter.intensity.corrected", colnames(tmp))) ){
+    
+    # code modified by Ananth:
+    # Filter to consider only protein groups for which the at least 50 % of the sample replicates 
+    # have non-zero intensity values
+    
+    ##### Read sample replicate information
+    ##### Note: User defined annotation file
+    sample_replicates <- read.table("sample_replicates.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+    
+    for(i in 1:nrow(sample_replicates))
+    {
+      sample_replicates[i,] <- gsub("^","Reporter.intensity.corrected.", sample_replicates[i,], perl=TRUE)
+      
+      subdata <- tmp[, c(unname(unlist(sample_replicates[i,-1])))]
+      tmp$replicate_nonzero_instensity_count <- apply(subdata[1:ncol(subdata)], 1, function(x) length(which(x != 0)) )
+      
+      tmp <- tmp[tmp$replicate_nonzero_instensity_count >= ncol(subdata)/2,]
+      
+    }
+    ### code modification stops
     tmp <- tmp[ ,c(2, grep("Reporter.intensity.corrected.[0-9].{1,}", colnames(tmp))) ]
   } else {
     tmp <- tmp[ ,c(2, grep("Intensity.", colnames(tmp))) ]
   }
 }
+
+
+
 #####
 Majority.protein.IDs <- tmp$Majority.protein.IDs
 tmp <- tmp[ , -1]
