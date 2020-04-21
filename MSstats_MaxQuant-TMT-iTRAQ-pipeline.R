@@ -41,6 +41,7 @@ annot <- read.table("MSstat_annot_factors.txt" , quote = "\"", header = TRUE, se
 
 
 ##### 4. Read sample replicate information
+##### Note: User defined annotation file
 sample_replicates <- read.table("sample_replicates.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 
 
@@ -64,11 +65,8 @@ for(i in 1:nrow(sample_replicates))
   
 }
 
-#####B. Replace missing values of NaN with NA
 
-
-
-#####C. Add gene name and protein name
+#####B. Add gene name and protein name
 #### perform protein group to gene mapping
 #### this loop will take some time
 
