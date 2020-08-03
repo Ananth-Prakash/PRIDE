@@ -31,17 +31,17 @@ setwd('/Users/ananth/Documents/MaxQuant_Bechmarking/Human/PXD007160/')
 
 
 #### 1. Read proteinGroups to get proteinID information.
-proteinGroups_inp  <- read.table( "proteinGroups-MS3-nomatch-bw-runs.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+proteinGroups_inp  <- read.table( "proteinGroups.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 
 
 #### 2. Read evidence.txt file
-evidence_file  <- read.table( "evidence-MS3-nomatch-bw-runs.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+evidence_file  <- read.table( "evidence-MS3.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 
 
 #### 3. Read annotation file
 #### Note: In the user defined the annotation file the RAW file names in coloumn 'Run' should not have .raw extension!
 ####       the Channel coloumn is case sensitive, and entries must only be in the format 'channel.1', 'channel.2', 'channel.3', ......
-annot <- read.table("MSstat_annot_channels-1.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
+annot <- read.table("MSstat_annot_channels.txt" , quote = "\"", header = TRUE, sep = "\t", stringsAsFactors = FALSE, comment.char = "#")
 
 
 ##### 4. Read sample replicate information
@@ -120,7 +120,7 @@ colnames(proteinGroups_inp)
 # Although the first step of postprocessing  MaxQuant output in "process-protein-groups-with-gene-names.R"
 # does aggregation, here it is not advised as it changes MaxQuant output format and MSstatsTMT does not recognise
 # change in format.
-# There will slight change in number of rows before and after aggregation. 
+# There will be slight change in number of rows before and after aggregation. 
 # Normalised intensity values in examples such as TMT PXD007160 may slightly differ some entries.
 ## Aggregate the columns "Reporter.intensity.corrected". Check their column numbers
 # data.to.map <- aggregate(data.to.map[ , 122:221], list("Gene ID" = data.to.map$ENSG, "Gene.Name" = data.to.map$Gene.Name), sum, na.rm =TRUE)
