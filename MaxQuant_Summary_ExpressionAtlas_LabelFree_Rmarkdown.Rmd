@@ -1,9 +1,5 @@
 ---
 title: "Summary of reanalysed MaxQuant output exported into Expression Atlas"
-header-includes:
-- \usepackage{pdflscape}
-- \newcommand{\blandscape}{\begin{landscape}}
-- \newcommand{\elandscape}{\end{landscape}}
 output: pdf_document
 ---
 
